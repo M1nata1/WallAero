@@ -86,7 +86,7 @@ If the pack has an `install.inf`, the mapping comes from it. Both common layouts
 | `SizeAll` | move, open hand and closed hand |
 | `Help` | the arrow with a question mark |
 
-`NWPen` (handwriting), `UpArrow` (alternate select), `Person` and `Pin` have no macOS equivalent: such files are listed under the preview and are not applied.
+`NWPen` (handwriting), `UpArrow` (alternate select), `Person` and `Pin` have no macOS equivalent, so such files are not applied.
 
 Good to know:
 

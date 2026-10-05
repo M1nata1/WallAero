@@ -110,13 +110,6 @@ struct CursorSettingsSection: View {
                     .padding(.vertical, 4)
                 }
 
-                if !cursor.unmatchedNames.isEmpty {
-                    Text(String(format: NSLocalizedString("No macOS equivalent for: %@", comment: "Cursor settings"),
-                                cursor.unmatchedNames.joined(separator: ", ")))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
                 HStack {
                     Button("Apply", action: cursor.apply)
                         .buttonStyle(.borderedProminent)

@@ -66,7 +66,6 @@
 "Pause when windows cover the desktop" = "Ставить на паузу, когда окна закрывают рабочий стол";
 "Pause on battery power" = "Ставить на паузу при работе от аккумулятора";
 "Pause in Low Power Mode" = "Ставить на паузу в режиме энергосбережения";
-"Playback always stops while displays sleep or the screen is locked." = "Когда дисплеи в режиме сна или экран заблокирован, обои всегда на паузе.";
 "General" = "Основные";
 "Open at login" = "Открывать при входе в систему";
 "Use the first frame as the macOS wallpaper" = "Использовать первый кадр как обои macOS";
@@ -105,7 +104,6 @@
 "Cursor pack" = "Набор курсоров";
 "Choose Folder…" = "Выбрать папку…";
 "Change…" = "Изменить…";
-"No macOS equivalent for: %@" = "Нет аналогов в macOS: %@";
 "Reset" = "Сбросить";
 "Pointer size is set in System Settings → Accessibility → Display." = "Размер указателя можно изменить в Системных настройках: «Универсальный доступ» → «Дисплей».";
 "If something goes wrong, just restart the app or click Reset." = "Если что-то пойдёт не так, просто перезапустите приложение или нажмите «Сбросить».";

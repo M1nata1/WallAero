@@ -57,10 +57,6 @@ final class CursorSettings: ObservableObject {
 
     var mappedCount: Int { theme?.assignments.count ?? 0 }
 
-    var unmatchedNames: [String] {
-        (theme?.unmatchedFiles ?? []).map { $0.deletingPathExtension().lastPathComponent }
-    }
-
     /// Builds the animated previews, once per loaded pack. One cursor file can theme several
     /// macOS roles (all the resize variants, say); it is shown once, under its main role.
     private static func makePreviews(_ theme: CursorTheme) -> [CursorPreview] {

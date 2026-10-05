@@ -38,10 +38,6 @@ struct SettingsView: View {
                 Toggle("Pause when windows cover the desktop", isOn: $preferences.pauseWhenCovered)
                 Toggle("Pause on battery power", isOn: $preferences.pauseOnBattery)
                 Toggle("Pause in Low Power Mode", isOn: $preferences.pauseInLowPowerMode)
-                // Inside the group, under the toggles: a grouped form's footer sits off to the right.
-                Text("Playback always stops while displays sleep or the screen is locked.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
             }
 
             CursorSettingsSection()
