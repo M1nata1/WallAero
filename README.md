@@ -80,7 +80,7 @@ If the pack has an `install.inf`, the mapping comes from it. Both common layouts
 | `Hand` | the hand over links; the make-alias arrow while dragging |
 | `Wait` | busy |
 | `AppStarting` | the arrow with a background-activity indicator |
-| `Crosshair` | crosshairs, including the screenshot one (⌘⇧4) |
+| `Crosshair` | crosshairs in apps; the camera over a window when capturing a window (⌘⇧4, then Space) |
 | `No` | "not allowed" while dragging |
 | `SizeNS`, `SizeWE`, `SizeNWSE`, `SizeNESW` | resizing: window edges and corners, split-view dividers, the Dock divider |
 | `SizeAll` | move, open hand and closed hand |
@@ -96,7 +96,7 @@ Good to know:
 - The chosen pack is remembered: after a restart or a new login, WallAero Engine applies it again when it launches. If the pointer ever looks wrong, just restart the app or click Reset.
 - If macOS puts its own cursors back by itself, for example after sleep or a display change, WallAero Engine notices within a few seconds and puts the pack's cursors back.
 - macOS 26 draws the arrow and the text cursor from new system cursors (`ArrowS`, `IBeamS`). WallAero Engine themes them as well as the older ones.
-- The camera pointer for window screenshots (⌘⇧4, then Space) stays the system one: Windows packs have no such cursor.
+- For window screenshots (⌘⇧4, then Space), the pack's crosshair is shown in place of the camera: Windows packs have no camera cursor.
 
 The same from Terminal:
 

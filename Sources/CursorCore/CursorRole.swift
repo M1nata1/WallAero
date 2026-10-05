@@ -56,9 +56,14 @@ public struct CursorRole: Hashable, Sendable {
 
     /// More macOS cursors themed from the same Windows cursors: the arrow and I-beam macOS 26
     /// actually shows, the vertical-text I-beam, one-way resize arrows, the window-edge and corner
-    /// resize cursors macOS 15 uses (and the Dock divider), AppKit's own crosshair and the
-    /// screenshot crosshair (⌘⇧4). Listed after the primary roles so `matching` still returns
-    /// those first.
+    /// resize cursors macOS 15 uses (and the Dock divider), AppKit's own crosshair and, since
+    /// Windows packs have no camera, the camera shown over a window while taking a screenshot.
+    /// Listed after the primary roles so `matching` still returns those first.
+    ///
+    /// The area-selection crosshair of ⌘⇧4 cannot be themed: `screencapture` draws it itself,
+    /// from an image built into the tool, merged with the coordinates into one cursor that it
+    /// replaces on every mouse move. The system's "screenshot selection" cursors (7 and 8) are
+    /// themed all the same for anything that still uses them.
     private static let variants: [CursorRole] = {
         let pointer = (["Arrow"], ["normal", "pointer", "arrow", "default"])
         let text = (["IBeam"], ["text", "ibeam", "beam"])
@@ -85,7 +90,9 @@ public struct CursorRole: Hashable, Sendable {
             (33, "Window corner ↖", diagonal1), (35, "Window corner ↘", diagonal1),
             (29, "Window corner ↗", diagonal2), (37, "Window corner ↙", diagonal2),
             (20, "Crosshair (AppKit)", crosshair),
-            (8, "Screenshot crosshair", crosshair),
+            (8, "Screenshot selection (to clipboard)", crosshair),
+            // The camera shown over a window after ⌘⇧4 and Space; 10 is its copy-to-clipboard twin.
+            (9, "Screenshot window", crosshair), (10, "Screenshot window (to clipboard)", crosshair),
             (39, "Move (all directions)", move),
         ]
         return macOS26 + table.map { id, name, names in

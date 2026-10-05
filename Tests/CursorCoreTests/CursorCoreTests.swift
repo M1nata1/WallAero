@@ -140,6 +140,10 @@ final class WindowsCursorInfTests: XCTestCase {
         let vertical = CursorRole.roles(forRegistryName: "SizeNS").map(\.id)
         XCTAssertEqual(vertical.first, "com.apple.cursor.23")
         XCTAssertTrue(vertical.contains("com.apple.cursor.32"))
+        // The crosshair also stands in for the window-capture cameras (9, 10): Windows packs have
+        // none. 7 and 8 are the system's screenshot-selection cursors, which ⌘⇧4 no longer shows.
+        XCTAssertEqual(CursorRole.roles(forRegistryName: "Crosshair").map(\.id),
+                       ["com.apple.cursor.7", "com.apple.cursor.20", "com.apple.cursor.8", "com.apple.cursor.9", "com.apple.cursor.10"])
     }
 }
 
