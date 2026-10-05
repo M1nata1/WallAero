@@ -20,7 +20,7 @@
 
 ## Установка
 
-Готовая сборка лежит в репозитории: [**скачать WallAeroEngine.zip**](https://github.com/M1nata1/AiWallpaper/raw/main/dist/WallAeroEngine.zip). Она подходит для Mac с Apple Silicon и Intel, нужна macOS 13 Ventura или новее.
+Готовая сборка лежит в репозитории: [**скачать WallAeroEngine.zip**](https://github.com/M1nata1/WallAero-Engine/raw/main/dist/WallAeroEngine.zip). Она подходит для Mac с Apple Silicon и Intel, нужна macOS 13 Ventura или новее.
 
 1. Распакуйте архив и перетащите WallAero Engine в папку «Программы».
 2. Откройте приложение. Оно не нотаризовано Apple, поэтому при первом запуске macOS его остановит и сообщит, что не может его проверить. Закройте это окно.

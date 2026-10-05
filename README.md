@@ -20,7 +20,7 @@ Live wallpapers for macOS: videos, GIFs and pictures on your desktop — beneath
 
 ## Installation
 
-A ready-made build is in the repository: [**download WallAeroEngine.zip**](https://github.com/M1nata1/AiWallpaper/raw/main/dist/WallAeroEngine.zip). It runs on Macs with Apple silicon or Intel processors and needs macOS 13 Ventura or later.
+A ready-made build is in the repository: [**download WallAeroEngine.zip**](https://github.com/M1nata1/WallAero-Engine/raw/main/dist/WallAeroEngine.zip). It runs on Macs with Apple silicon or Intel processors and needs macOS 13 Ventura or later.
 
 1. Unzip the archive and drag WallAero Engine to your Applications folder.
 2. Open the app. It is not notarized by Apple, so on first launch macOS stops it and says it cannot verify it. Close that message.
