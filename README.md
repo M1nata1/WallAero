@@ -1,4 +1,4 @@
-# AiWallpaper
+# WallAero
 
 **English** · [Русский](README.ru.md)
 
