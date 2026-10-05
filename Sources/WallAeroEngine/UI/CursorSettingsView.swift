@@ -126,15 +126,6 @@ struct CursorSettingsSection: View {
             }
         } header: {
             Text("Cursor")
-        } footer: {
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Pointer size is set in System Settings → Accessibility → Display.")
-                Text("If something goes wrong, just restart the app or click Reset.")
-            }
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .multilineTextAlignment(.leading)
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 }

@@ -69,7 +69,6 @@
 "General" = "Основные";
 "Open at login" = "Открывать при входе в систему";
 "Use the first frame as the macOS wallpaper" = "Использовать первый кадр как обои macOS";
-"Shown on the lock screen, in Mission Control and when WallAero Engine is not running." = "Его видно на экране блокировки, в Mission Control и когда WallAero Engine не запущен.";
 "Library folder" = "Папка библиотеки";
 
 /* Menus */
@@ -105,8 +104,6 @@
 "Choose Folder…" = "Выбрать папку…";
 "Change…" = "Изменить…";
 "Reset" = "Сбросить";
-"Pointer size is set in System Settings → Accessibility → Display." = "Размер указателя можно изменить в Системных настройках: «Универсальный доступ» → «Дисплей».";
-"If something goes wrong, just restart the app or click Reset." = "Если что-то пойдёт не так, просто перезапустите приложение или нажмите «Сбросить».";
 "Choose" = "Выбрать";
 "Choose a folder of cursors (.ani, .cur, .png)." = "Выберите папку с курсорами (.ani, .cur, .png).";
 "No usable cursors were found in that folder." = "В этой папке нет подходящих курсоров.";

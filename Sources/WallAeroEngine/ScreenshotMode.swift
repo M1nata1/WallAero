@@ -37,7 +37,7 @@ enum ScreenshotMode {
             .environmentObject(manager)
             .environmentObject(importer)
         // Tall enough to show every section without scrolling.
-        let settingsHeight: CGFloat = 890
+        let settingsHeight: CGFloat = 800
         let settingsView = SettingsView(height: settingsHeight)
             .environmentObject(preferences)
             .environmentObject(library)

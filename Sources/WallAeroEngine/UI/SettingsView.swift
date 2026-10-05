@@ -52,10 +52,7 @@ struct SettingsView: View {
                         .font(.caption)
                         .foregroundStyle(.red)
                 }
-                Toggle(isOn: $preferences.setsSystemWallpaper) {
-                    Text("Use the first frame as the macOS wallpaper")
-                    Text("Shown on the lock screen, in Mission Control and when WallAero Engine is not running.")
-                }
+                Toggle("Use the first frame as the macOS wallpaper", isOn: $preferences.setsSystemWallpaper)
                 LabeledContent("Library folder") {
                     Button("Show in Finder") {
                         NSWorkspace.shared.open(library.rootURL)
