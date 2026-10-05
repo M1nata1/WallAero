@@ -19,6 +19,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     static func main() {
         let app = NSApplication.shared
+        // The screenshot helper runs next to the copy in use and must not move its data.
+        if ScreenshotMode.outputDirectory == nil {
+            LegacyMigration.run()
+        }
         let delegate = AppDelegate()
         app.delegate = delegate
         withExtendedLifetime(delegate) {
@@ -189,16 +193,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func makeMainMenu() -> NSMenu {
         let appMenu = NSMenu()
-        appMenu.addItem(withTitle: NSLocalizedString("About AiWallpaper", comment: "Menu item"), action: #selector(showAbout(_:)), keyEquivalent: "")
+        appMenu.addItem(withTitle: NSLocalizedString("About WallAero Engine", comment: "Menu item"), action: #selector(showAbout(_:)), keyEquivalent: "")
         appMenu.addItem(.separator())
         appMenu.addItem(withTitle: NSLocalizedString("Settings…", comment: "Menu item"), action: #selector(showSettings(_:)), keyEquivalent: ",")
         appMenu.addItem(.separator())
-        appMenu.addItem(withTitle: NSLocalizedString("Hide AiWallpaper", comment: "Menu item"), action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
+        appMenu.addItem(withTitle: NSLocalizedString("Hide WallAero Engine", comment: "Menu item"), action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
         appMenu.addItem(withTitle: NSLocalizedString("Hide Others", comment: "Menu item"), action: #selector(NSApplication.hideOtherApplications(_:)), keyEquivalent: "h")
             .keyEquivalentModifierMask = [.command, .option]
         appMenu.addItem(withTitle: NSLocalizedString("Show All", comment: "Menu item"), action: #selector(NSApplication.unhideAllApplications(_:)), keyEquivalent: "")
         appMenu.addItem(.separator())
-        appMenu.addItem(withTitle: NSLocalizedString("Quit AiWallpaper", comment: "Menu item"), action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        appMenu.addItem(withTitle: NSLocalizedString("Quit WallAero Engine", comment: "Menu item"), action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
 
         let fileMenu = NSMenu(title: NSLocalizedString("File", comment: "Menu title"))
         fileMenu.addItem(withTitle: NSLocalizedString("Add Wallpapers…", comment: "Menu item"), action: #selector(addWallpapers(_:)), keyEquivalent: "o")

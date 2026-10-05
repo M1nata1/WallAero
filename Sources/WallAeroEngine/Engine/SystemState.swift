@@ -22,7 +22,7 @@ extension NSScreen {
 
 /// Battery state, read through IOKit because AppKit has no notification for it.
 enum PowerSource {
-    static let didChangeNotification = Notification.Name("AiWallpaperPowerSourceDidChange")
+    static let didChangeNotification = Notification.Name("WallAeroEnginePowerSourceDidChange")
 
     private static var runLoopSource: CFRunLoopSource?
 

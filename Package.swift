@@ -2,11 +2,11 @@
 import PackageDescription
 
 let package = Package(
-    name: "AiWallpaper",
+    name: "WallAeroEngine",
     defaultLocalization: "en",
     platforms: [.macOS(.v13)],
     products: [
-        .executable(name: "AiWallpaper", targets: ["AiWallpaper"])
+        .executable(name: "WallAeroEngine", targets: ["WallAeroEngine"])
     ],
     targets: [
         // Media import, conversion and the wallpaper library. No UI code.
@@ -28,9 +28,9 @@ let package = Package(
         ),
         // The menu bar app: desktop windows, playback engine and SwiftUI screens.
         .executableTarget(
-            name: "AiWallpaper",
+            name: "WallAeroEngine",
             dependencies: ["WallpaperCore", "CursorCore"],
-            path: "Sources/AiWallpaper"
+            path: "Sources/WallAeroEngine"
         ),
         // Command-line helper to apply or reset a cursor theme, reusing the app's engine.
         .executableTarget(

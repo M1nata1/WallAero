@@ -22,7 +22,7 @@ final class WindowManager: NSObject, NSWindowDelegate {
 
     func showLibrary() {
         let window = libraryWindow ?? makeWindow(
-            title: "AiWallpaper",
+            title: "WallAero Engine",
             content: makeLibraryView(),
             size: NSSize(width: 940, height: 640),
             resizable: true,

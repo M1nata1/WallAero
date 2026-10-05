@@ -6,7 +6,7 @@ import WallpaperCore
 
 /// Renders the library and settings windows to PNG files for the README (`scripts/screenshots.sh`):
 ///
-///     build/AiWallpaper.app/Contents/MacOS/AiWallpaper --screenshots docs/screenshots
+///     "build/WallAero Engine.app/Contents/MacOS/WallAeroEngine" --screenshots docs/screenshots
 ///
 /// It runs as a separate process next to the copy in use: it starts no wallpaper and no menu bar
 /// icon, and only reads the library and settings. ScreenCaptureKit lets an app capture its own
@@ -44,7 +44,7 @@ enum ScreenshotMode {
             .environmentObject(cursorSettings)
 
         Task {
-            await shoot(AnyView(libraryView), title: "AiWallpaper", size: NSSize(width: 780, height: 440),
+            await shoot(AnyView(libraryView), title: "WallAero Engine", size: NSSize(width: 780, height: 440),
                         to: directory.appendingPathComponent("library.png"))
             await shoot(AnyView(settingsView), title: NSLocalizedString("Settings", comment: "Window title"),
                         size: NSSize(width: 500, height: settingsHeight), to: directory.appendingPathComponent("settings.png"))

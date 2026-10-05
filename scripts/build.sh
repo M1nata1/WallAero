@@ -1,14 +1,15 @@
 #!/bin/bash
-# Builds build/AiWallpaper.app from the Swift package.
+# Builds "build/WallAero Engine.app" from the Swift package.
 #
 #   scripts/build.sh            universal app: Apple Silicon and Intel
 #   scripts/build.sh --native   only for this Mac's processor; twice as fast, for development
 #   scripts/build.sh --install  also copy the app to /Applications
-#   scripts/build.sh --dist     also pack the app into dist/AiWallpaper.zip, the download in the README
+#   scripts/build.sh --dist     also pack the app into dist/WallAeroEngine.zip, the download in the README
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-APP_NAME="AiWallpaper"
+APP_NAME="WallAero Engine"   # the bundle, as shown in Finder
+EXECUTABLE="WallAeroEngine"  # the Swift product inside it; also names the archive
 APP="build/$APP_NAME.app"
 INSTALL=0
 DIST=0
@@ -41,7 +42,7 @@ fi
 echo "→ Assembling $APP…"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-cp "$BIN_DIR/$APP_NAME" "$APP/Contents/MacOS/"
+cp "$BIN_DIR/$EXECUTABLE" "$APP/Contents/MacOS/"
 cp Resources/Info.plist "$APP/Contents/"
 cp Resources/AppIcon.icns "$APP/Contents/Resources/"
 cp -R Resources/*.lproj "$APP/Contents/Resources/"
@@ -50,19 +51,26 @@ echo "→ Signing (ad hoc)…"
 codesign --force --sign - --timestamp=none "$APP"
 
 if [ "$DIST" -eq 1 ]; then
-    echo "→ Packing dist/$APP_NAME.zip…"
+    echo "→ Packing dist/$EXECUTABLE.zip…"
     mkdir -p dist
-    rm -f "dist/$APP_NAME.zip"
+    rm -f "dist/$EXECUTABLE.zip"
     # The signature lives in the bundle's files, so this Mac's extended attributes (provenance)
     # are left out; they would only add a __MACOSX folder to the archive.
-    ditto -c -k --keepParent --norsrc --noextattr --noacl "$APP" "dist/$APP_NAME.zip"
+    ditto -c -k --keepParent --norsrc --noextattr --noacl "$APP" "dist/$EXECUTABLE.zip"
 fi
 
 if [ "$INSTALL" -eq 1 ]; then
     echo "→ Installing to /Applications…"
-    if pgrep -x "$APP_NAME" >/dev/null; then
-        osascript -e "quit app \"$APP_NAME\"" >/dev/null 2>&1 || pkill -x "$APP_NAME" || true
+    if pgrep -x "$EXECUTABLE" >/dev/null; then
+        osascript -e "quit app \"$APP_NAME\"" >/dev/null 2>&1 || pkill -x "$EXECUTABLE" || true
         sleep 1
+    fi
+    # The app was called AiWallpaper before. Its library and settings move over when the new
+    # one first opens, so the copy this script installed under the old name can go.
+    if [ -d "/Applications/AiWallpaper.app" ]; then
+        echo "→ Removing the old /Applications/AiWallpaper.app…"
+        pgrep -x AiWallpaper >/dev/null && { osascript -e 'quit app "AiWallpaper"' >/dev/null 2>&1 || pkill -x AiWallpaper || true; sleep 1; }
+        rm -rf "/Applications/AiWallpaper.app"
     fi
     rm -rf "/Applications/$APP_NAME.app"
     cp -R "$APP" /Applications/

@@ -3,7 +3,7 @@ import Foundation
 
 /// The user's collection of wallpapers, stored in Application Support:
 ///
-///     AiWallpaper/
+///     WallAeroEngine/
 ///       library.json   – the list of entries
 ///       Media/         – imported videos and pictures (animated images converted to .mov)
 ///       Thumbnails/    – small JPEG previews for the library window
@@ -19,6 +19,12 @@ public final class WallpaperLibrary: ObservableObject {
     private let indexURL: URL
 
     public nonisolated static var defaultRootURL: URL {
+        let applicationSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        return applicationSupport.appendingPathComponent("WallAeroEngine", isDirectory: true)
+    }
+
+    /// Where the library lived while the app was called AiWallpaper; see `LegacyData`.
+    public nonisolated static var legacyRootURL: URL {
         let applicationSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         return applicationSupport.appendingPathComponent("AiWallpaper", isDirectory: true)
     }

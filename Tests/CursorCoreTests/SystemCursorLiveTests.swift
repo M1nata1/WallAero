@@ -5,7 +5,7 @@ import XCTest
 /// Exercises the real system cursor path (apply → read back → reset → read back) against the
 /// user's live session, so it only runs when explicitly asked for:
 ///
-///     AIWALLPAPER_LIVE_CURSOR_TEST=1 swift test --filter SystemCursorLiveTests
+///     WALLAERO_LIVE_CURSOR_TEST=1 swift test --filter SystemCursorLiveTests
 ///
 /// It changes only the I-beam cursor and always restores it.
 @MainActor
@@ -15,14 +15,14 @@ final class SystemCursorLiveTests: XCTestCase {
         "/Users/fadevec/Documents/Personalization/Cursors/Hatsune Miku Cursor")
 
     override func setUpWithError() throws {
-        try XCTSkipUnless(ProcessInfo.processInfo.environment["AIWALLPAPER_LIVE_CURSOR_TEST"] == "1",
-                          "set AIWALLPAPER_LIVE_CURSOR_TEST=1 to run the live cursor test")
+        try XCTSkipUnless(ProcessInfo.processInfo.environment["WALLAERO_LIVE_CURSOR_TEST"] == "1",
+                          "set WALLAERO_LIVE_CURSOR_TEST=1 to run the live cursor test")
         try XCTSkipUnless(FileManager.default.fileExists(atPath: packFolder.path), "cursor pack not present")
     }
 
     func testApplyThenResetRestoresTheIBeam() throws {
         let controller = SystemCursorController(rootURL: FileManager.default.temporaryDirectory
-            .appendingPathComponent("AiWallpaperCursorTest-\(UUID().uuidString)"))
+            .appendingPathComponent("WallAeroEngineCursorTest-\(UUID().uuidString)"))
 
         let original = try XCTUnwrap(controller.registeredSize(roleID: ibeam))
         let decoded = try XCTUnwrap(CursorImageDecoder.decode(
@@ -53,13 +53,13 @@ final class SystemCursorLiveTests: XCTestCase {
 @MainActor
 final class SystemCursorKeepTests: XCTestCase {
     private func temporaryFolder() -> URL {
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent("AiWallpaperCursorTest-\(UUID().uuidString)")
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("WallAeroEngineCursorTest-\(UUID().uuidString)")
         addTeardownBlock { try? FileManager.default.removeItem(at: url) }
         return url
     }
 
     func testPutsBackAReplacedCursorAndResetRemovesIt() throws {
-        let role = CursorRole(id: "com.fadevec.aiwallpaper.test.\(UUID().uuidString)", displayName: "Test",
+        let role = CursorRole(id: "com.fadevec.wallaeroengine.test.\(UUID().uuidString)", displayName: "Test",
                               windowsRegistryNames: [], windowsAliases: [])
         let frames = (0..<4).map { _ in CursorFixtures.tinyImage() }
         let decoded = DecodedCursor(frames: frames, frameDurations: Array(repeating: 0.1, count: 4),

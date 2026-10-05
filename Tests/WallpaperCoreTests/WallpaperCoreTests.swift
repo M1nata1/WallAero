@@ -170,6 +170,69 @@ final class WallpaperLibraryTests: XCTestCase {
     }
 }
 
+final class LegacyDataTests: XCTestCase {
+    private var base: URL!
+    private var old: URL { base.appendingPathComponent("AiWallpaper") }
+    private var new: URL { base.appendingPathComponent("WallAeroEngine") }
+
+    override func setUpWithError() throws {
+        base = try TestMedia.directory()
+        addTeardownBlock { [base] in try? FileManager.default.removeItem(at: base!) }
+    }
+
+    private func write(_ text: String, to url: URL) throws {
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try text.write(to: url, atomically: true, encoding: .utf8)
+    }
+
+    private func text(at url: URL) -> String? {
+        try? String(contentsOf: url, encoding: .utf8)
+    }
+
+    func testAnUntouchedInstallJustGetsItsFolderRenamed() throws {
+        try write("library", to: old.appendingPathComponent("library.json"))
+        try write("video", to: old.appendingPathComponent("Media/a.mov"))
+
+        LegacyData.moveContents(of: old, into: new)
+
+        XCTAssertEqual(text(at: new.appendingPathComponent("library.json")), "library")
+        XCTAssertEqual(text(at: new.appendingPathComponent("Media/a.mov")), "video")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: old.path))
+    }
+
+    func testOldDataMergesIntoFoldersTheNewAppAlreadyCreated() throws {
+        try write("library", to: old.appendingPathComponent("library.json"))
+        try write("video", to: old.appendingPathComponent("Media/a.mov"))
+        try write("backup", to: old.appendingPathComponent("CursorBackup/arrow.json"))
+        // The new app (or cursorctl) has been there first: empty folders and a file of its own.
+        try FileManager.default.createDirectory(at: new.appendingPathComponent("Media"), withIntermediateDirectories: true)
+        try write("newer", to: new.appendingPathComponent("CursorBackup/ibeam.json"))
+
+        LegacyData.moveContents(of: old, into: new)
+
+        XCTAssertEqual(text(at: new.appendingPathComponent("library.json")), "library")
+        XCTAssertEqual(text(at: new.appendingPathComponent("Media/a.mov")), "video")
+        XCTAssertEqual(text(at: new.appendingPathComponent("CursorBackup/arrow.json")), "backup")
+        XCTAssertEqual(text(at: new.appendingPathComponent("CursorBackup/ibeam.json")), "newer")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: old.path))
+    }
+
+    func testNothingInTheNewFolderIsOverwritten() throws {
+        try write("old library", to: old.appendingPathComponent("library.json"))
+        try write("new library", to: new.appendingPathComponent("library.json"))
+
+        LegacyData.moveContents(of: old, into: new)
+
+        XCTAssertEqual(text(at: new.appendingPathComponent("library.json")), "new library")
+        XCTAssertEqual(text(at: old.appendingPathComponent("library.json")), "old library", "the old file is left, not deleted")
+    }
+
+    func testDoesNothingWithoutAnOldFolder() {
+        LegacyData.moveContents(of: old, into: new)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: new.path))
+    }
+}
+
 // MARK: - Helpers
 
 private func XCTUnwrapAsync<T>(_ value: @autoclosure () async throws -> T?) async throws -> T {
@@ -180,7 +243,7 @@ private func XCTUnwrapAsync<T>(_ value: @autoclosure () async throws -> T?) asyn
 enum TestMedia {
     static func directory() throws -> URL {
         let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("AiWallpaperTests-\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("WallAeroEngineTests-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
         return url
     }

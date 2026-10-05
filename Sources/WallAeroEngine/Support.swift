@@ -3,10 +3,10 @@ import os
 import ServiceManagement
 import WallpaperCore
 
-/// View with: log stream --predicate 'subsystem == "com.fadevec.AiWallpaper"'
+/// View with: log stream --predicate 'subsystem == "com.fadevec.WallAeroEngine"'
 enum Log {
-    static let playback = Logger(subsystem: "com.fadevec.AiWallpaper", category: "playback")
-    static let cursor = Logger(subsystem: "com.fadevec.AiWallpaper", category: "cursor")
+    static let playback = Logger(subsystem: "com.fadevec.WallAeroEngine", category: "playback")
+    static let cursor = Logger(subsystem: "com.fadevec.WallAeroEngine", category: "cursor")
 }
 
 enum LaunchAtLogin {

@@ -70,7 +70,7 @@
 "General" = "Основные";
 "Open at login" = "Открывать при входе в систему";
 "Use the first frame as the macOS wallpaper" = "Использовать первый кадр как обои macOS";
-"Shown on the lock screen, in Mission Control and when AiWallpaper is not running." = "Его видно на экране блокировки, в Mission Control и когда AiWallpaper не запущен.";
+"Shown on the lock screen, in Mission Control and when WallAero Engine is not running." = "Его видно на экране блокировки, в Mission Control и когда WallAero Engine не запущен.";
 "Library folder" = "Папка библиотеки";
 
 /* Menus */
@@ -80,12 +80,12 @@
 "Add Wallpapers…" = "Добавить обои…";
 "Open Library…" = "Открыть библиотеку…";
 "Settings…" = "Настройки…";
-"About AiWallpaper" = "О программе AiWallpaper";
+"About WallAero Engine" = "О программе WallAero Engine";
 "Animated wallpapers from videos, GIFs and pictures." = "Живые обои из видео, GIF и изображений.";
-"Hide AiWallpaper" = "Скрыть AiWallpaper";
+"Hide WallAero Engine" = "Скрыть WallAero Engine";
 "Hide Others" = "Скрыть остальные";
 "Show All" = "Показать все";
-"Quit AiWallpaper" = "Завершить AiWallpaper";
+"Quit WallAero Engine" = "Завершить WallAero Engine";
 "File" = "Файл";
 "Close Window" = "Закрыть окно";
 "Edit" = "Правка";

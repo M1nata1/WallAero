@@ -58,7 +58,7 @@ struct SettingsView: View {
                 }
                 Toggle(isOn: $preferences.setsSystemWallpaper) {
                     Text("Use the first frame as the macOS wallpaper")
-                    Text("Shown on the lock screen, in Mission Control and when AiWallpaper is not running.")
+                    Text("Shown on the lock screen, in Mission Control and when WallAero Engine is not running.")
                 }
                 LabeledContent("Library folder") {
                     Button("Show in Finder") {

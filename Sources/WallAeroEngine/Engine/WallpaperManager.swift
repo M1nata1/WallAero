@@ -289,7 +289,7 @@ final class WallpaperManager: NSObject, ObservableObject {
                     ])
                 } catch {
                     syncedSystemWallpapers[displayID] = nil
-                    NSLog("AiWallpaper: cannot set the system wallpaper: \(error.localizedDescription)")
+                    NSLog("WallAero Engine: cannot set the system wallpaper: \(error.localizedDescription)")
                 }
             }
         }

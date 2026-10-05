@@ -53,7 +53,7 @@ public final class SystemCursorController {
         } else {
             home = FileManager.default.homeDirectoryForCurrentUser
         }
-        return home.appendingPathComponent("Library/Application Support/AiWallpaper", isDirectory: true)
+        return home.appendingPathComponent("Library/Application Support/WallAeroEngine", isDirectory: true)
     }
 
     // MARK: - Apply

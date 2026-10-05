@@ -30,8 +30,8 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
         menu.delegate = self
         statusItem.menu = menu
         if let button = statusItem.button {
-            button.image = NSImage(systemSymbolName: "play.rectangle.on.rectangle", accessibilityDescription: "AiWallpaper")
-            button.toolTip = "AiWallpaper"
+            button.image = NSImage(systemSymbolName: "play.rectangle.on.rectangle", accessibilityDescription: "WallAero Engine")
+            button.toolTip = "WallAero Engine"
         }
         cancellable = manager.objectWillChange
             .receive(on: RunLoop.main)
@@ -74,9 +74,9 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
                           symbol: "square.grid.2x2"))
         menu.addItem(item(NSLocalizedString("Settings…", comment: "Menu item"), #selector(openSettings), key: ",", symbol: "gearshape"))
         menu.addItem(.separator())
-        menu.addItem(item(NSLocalizedString("About AiWallpaper", comment: "Menu item"), #selector(showAbout), key: "",
+        menu.addItem(item(NSLocalizedString("About WallAero Engine", comment: "Menu item"), #selector(showAbout), key: "",
                           symbol: "info.circle"))
-        menu.addItem(item(NSLocalizedString("Quit AiWallpaper", comment: "Menu item"), #selector(quit), key: "q", symbol: "power"))
+        menu.addItem(item(NSLocalizedString("Quit WallAero Engine", comment: "Menu item"), #selector(quit), key: "q", symbol: "power"))
     }
 
     private func wallpaperMenu() -> NSMenu {

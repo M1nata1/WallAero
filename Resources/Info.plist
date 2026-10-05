@@ -5,13 +5,13 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleDisplayName</key>
-	<string>AiWallpaper</string>
+	<string>WallAero Engine</string>
 	<key>CFBundleExecutable</key>
-	<string>AiWallpaper</string>
+	<string>WallAeroEngine</string>
 	<key>CFBundleIconFile</key>
 	<string>AppIcon</string>
 	<key>CFBundleIdentifier</key>
-	<string>com.fadevec.AiWallpaper</string>
+	<string>com.fadevec.WallAeroEngine</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleLocalizations</key>
@@ -20,7 +20,7 @@
 		<string>ru</string>
 	</array>
 	<key>CFBundleName</key>
-	<string>AiWallpaper</string>
+	<string>WallAero Engine</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
