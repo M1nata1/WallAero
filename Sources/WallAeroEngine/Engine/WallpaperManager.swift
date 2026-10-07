@@ -97,6 +97,7 @@ final class WallpaperManager: NSObject, ObservableObject {
         workspace.addObserver(self, selector: #selector(displaysDidWake), name: NSWorkspace.screensDidWakeNotification, object: nil)
         workspace.addObserver(self, selector: #selector(sessionDidResignActive), name: NSWorkspace.sessionDidResignActiveNotification, object: nil)
         workspace.addObserver(self, selector: #selector(sessionDidBecomeActive), name: NSWorkspace.sessionDidBecomeActiveNotification, object: nil)
+        workspace.addObserver(self, selector: #selector(activeSpaceDidChange), name: NSWorkspace.activeSpaceDidChangeNotification, object: nil)
 
         let distributed = DistributedNotificationCenter.default()
         distributed.addObserver(self, selector: #selector(screenDidLock), name: .init("com.apple.screenIsLocked"), object: nil)
@@ -266,6 +267,11 @@ final class WallpaperManager: NSObject, ObservableObject {
     }
 
     /// Mirrors the wallpaper as a still picture into macOS, when the user asked for it.
+    ///
+    /// macOS keeps a desktop picture for every Space, and `setDesktopImageURL` changes only the
+    /// Space in front. `resyncSystemWallpapers` therefore runs again whenever another Space comes
+    /// to the front, so each one is corrected as soon as it is shown; otherwise the lock screen
+    /// would show whatever picture that Space had before.
     private func syncSystemWallpapers() {
         guard preferences.setsSystemWallpaper else {
             syncedSystemWallpapers = [:]
@@ -283,15 +289,36 @@ final class WallpaperManager: NSObject, ObservableObject {
             Task {
                 do {
                     let url = try await library.stillImageURL(for: item)
+                    // What macOS reports is for the Space in front; skip it if it is right already.
+                    let current = NSWorkspace.shared.desktopImageURL(for: screen)
+                    guard current?.standardizedFileURL != url.standardizedFileURL else {
+                        return
+                    }
                     try NSWorkspace.shared.setDesktopImageURL(url, for: screen, options: [
                         .imageScaling: NSImageScaling.scaleProportionallyUpOrDown.rawValue,
                         .allowClipping: true,
                     ])
+                    Log.playback.notice("System wallpaper on \(screen.localizedName, privacy: .public): “\(item.name, privacy: .public)” replaces \(current?.lastPathComponent ?? "nothing", privacy: .public)")
                 } catch {
                     syncedSystemWallpapers[displayID] = nil
                     NSLog("WallAero Engine: cannot set the system wallpaper: \(error.localizedDescription)")
                 }
             }
+        }
+    }
+
+    /// Checks the picture again against what macOS has now, not against what was set last.
+    private func resyncSystemWallpapers() {
+        syncedSystemWallpapers = [:]
+        syncSystemWallpapers()
+    }
+
+    @objc private func activeSpaceDidChange() {
+        resyncSystemWallpapers()
+        // Once more when the switch animation is over, in case macOS still reported the old Space.
+        Task {
+            try? await Task.sleep(nanoseconds: 800_000_000)
+            resyncSystemWallpapers()
         }
     }
 
@@ -311,6 +338,7 @@ final class WallpaperManager: NSObject, ObservableObject {
     @objc private func displaysDidWake() {
         displaysAsleep = false
         updatePlayback()
+        resyncSystemWallpapers()
     }
 
     @objc private func sessionDidResignActive() {
@@ -321,6 +349,7 @@ final class WallpaperManager: NSObject, ObservableObject {
     @objc private func sessionDidBecomeActive() {
         sessionActive = true
         updatePlayback()
+        resyncSystemWallpapers()
     }
 
     @objc private func screenDidLock() {
@@ -331,6 +360,7 @@ final class WallpaperManager: NSObject, ObservableObject {
     @objc private func screenDidUnlock() {
         screenLocked = false
         updatePlayback()
+        resyncSystemWallpapers()
     }
 }
 
