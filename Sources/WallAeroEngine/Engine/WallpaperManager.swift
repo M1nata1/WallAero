@@ -53,6 +53,11 @@ final class WallpaperManager: NSObject, ObservableObject {
         didSet { updatePlayback() }
     }
     @Published private(set) var pauseReason: PauseReason?
+    /// What was found in the user's music folder; nil when no folder is chosen.
+    @Published private(set) var musicFolder: MusicFolder?
+
+    /// The user's music. When there is any, it plays in place of the videos' own sound.
+    let music = PlaylistPlayer()
 
     private static let assignmentsKey = "assignments"
 
@@ -63,6 +68,8 @@ final class WallpaperManager: NSObject, ObservableObject {
     private var displaysAsleep = false
     private var screenLocked = false
     private var sessionActive = true
+    /// The music folder being read in the background, so the same scan is not started twice.
+    private var scanningMusicPath: String?
     /// Still images already handed to macOS, per display, to avoid redundant updates.
     private var syncedSystemWallpapers: [String: UUID] = [:]
 
@@ -116,6 +123,7 @@ final class WallpaperManager: NSObject, ObservableObject {
             .store(in: &cancellables)
 
         rebuildScreens()
+        reloadMusic()
     }
 
     // MARK: - Choosing wallpapers
@@ -208,12 +216,14 @@ final class WallpaperManager: NSObject, ObservableObject {
 
     private func applyPlaybackSettings() {
         // Only one display plays sound: the first one, in menu bar order, showing a video with audio.
-        let audibleDisplay = displays.first { screens[$0.id]?.item?.hasAudio == true }?.id
+        // With music of the user's own, none does: the music takes the place of the videos' sound.
+        let audibleDisplay = playsMusic ? nil : displays.first { screens[$0.id]?.item?.hasAudio == true }?.id
         for screen in screens.values {
             screen.view.setScaling(preferences.scaling)
             let audible = preferences.playsSound && screen.displayID == audibleDisplay
             screen.view.setAudio(muted: !audible, volume: Float(preferences.volume))
         }
+        music.volume = Float(preferences.volume)
     }
 
     /// Starts or stops every player according to the current state of the Mac.
@@ -226,6 +236,9 @@ final class WallpaperManager: NSObject, ObservableObject {
             let visible = !preferences.pauseWhenCovered || screen.isVisibleOnScreen
             screen.setPlaying(pauseReason == nil && visible, rate: Float(preferences.playbackRate))
         }
+        // Unlike the picture, the music goes on while windows cover the desktop: songs that
+        // stopped whenever a window was maximized would be of little use.
+        music.setPlaying(playsMusic && hasWallpaper && pauseReason == nil)
     }
 
     private func currentPauseReason() -> PauseReason? {
@@ -242,7 +255,60 @@ final class WallpaperManager: NSObject, ObservableObject {
     private func preferencesDidChange() {
         applyPlaybackSettings()
         updatePlayback()
+        reloadMusic()
         syncSystemWallpapers()
+    }
+
+    // MARK: - Music
+
+    /// Whether the user's music plays in place of the videos' own sound.
+    var playsMusic: Bool { preferences.playsSound && music.hasTracks }
+
+    /// Brings the player in line with the chosen folder, playlist and order. The folder is read
+    /// off the main thread: a large collection takes a moment.
+    private func reloadMusic() {
+        guard let path = preferences.musicFolderPath else {
+            scanningMusicPath = nil
+            musicFolder = nil
+            applyMusicSelection()
+            return
+        }
+        guard path != musicFolder?.url.path else {
+            applyMusicSelection()
+            return
+        }
+        guard path != scanningMusicPath else { return }
+        scanningMusicPath = path
+        Task {
+            let folder = await Task.detached(priority: .userInitiated) {
+                MusicFolder.scan(URL(fileURLWithPath: path))
+            }.value
+            guard scanningMusicPath == path else { return } // another folder was chosen meanwhile
+            scanningMusicPath = nil
+            musicFolder = folder
+            applyMusicSelection()
+        }
+    }
+
+    /// Reads the music folder so the settings can list its playlists, without playing anything.
+    /// For the screenshot helper, which never starts the manager.
+    func readMusicFolderForDisplay() async {
+        guard let path = preferences.musicFolderPath else { return }
+        musicFolder = await Task.detached(priority: .userInitiated) {
+            MusicFolder.scan(URL(fileURLWithPath: path))
+        }.value
+    }
+
+    private func applyMusicSelection() {
+        // A playlist that was renamed or deleted: back to all the music, so the picker shows a choice.
+        if let chosen = preferences.musicPlaylist, let playlists = musicFolder?.playlists,
+           !playlists.isEmpty, !playlists.contains(where: { $0.name == chosen }) {
+            preferences.musicPlaylist = nil
+        }
+        let tracks = musicFolder?.tracks(inPlaylist: preferences.musicPlaylist) ?? []
+        music.setTracks(tracks, shuffled: preferences.shufflesMusic)
+        applyPlaybackSettings()
+        updatePlayback()
     }
 
     private func libraryDidChange() {

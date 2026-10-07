@@ -28,6 +28,9 @@ final class Preferences: ObservableObject {
         static let playbackRate = "playbackRate"
         static let playsSound = "playsSound"
         static let volume = "volume"
+        static let musicFolderPath = "musicFolderPath"
+        static let musicPlaylist = "musicPlaylist"
+        static let shufflesMusic = "shufflesMusic"
         static let pauseWhenCovered = "pauseWhenCovered"
         static let pauseOnBattery = "pauseOnBattery"
         static let pauseInLowPowerMode = "pauseInLowPowerMode"
@@ -47,6 +50,17 @@ final class Preferences: ObservableObject {
     }
     @Published var volume: Double {
         didSet { defaults.set(volume, forKey: Key.volume) }
+    }
+    /// A folder of the user's own music, played in place of the video's sound. Nil: none chosen.
+    @Published var musicFolderPath: String? {
+        didSet { defaults.set(musicFolderPath, forKey: Key.musicFolderPath) }
+    }
+    /// The playlist to play from that folder; nil plays all the music in it.
+    @Published var musicPlaylist: String? {
+        didSet { defaults.set(musicPlaylist, forKey: Key.musicPlaylist) }
+    }
+    @Published var shufflesMusic: Bool {
+        didSet { defaults.set(shufflesMusic, forKey: Key.shufflesMusic) }
     }
     /// Stop decoding while windows or a full-screen app hide the desktop.
     @Published var pauseWhenCovered: Bool {
@@ -80,6 +94,9 @@ final class Preferences: ObservableObject {
         playbackRate = defaults.double(forKey: Key.playbackRate)
         playsSound = defaults.bool(forKey: Key.playsSound)
         volume = defaults.double(forKey: Key.volume)
+        musicFolderPath = defaults.string(forKey: Key.musicFolderPath)
+        musicPlaylist = defaults.string(forKey: Key.musicPlaylist)
+        shufflesMusic = defaults.bool(forKey: Key.shufflesMusic)
         pauseWhenCovered = defaults.bool(forKey: Key.pauseWhenCovered)
         pauseOnBattery = defaults.bool(forKey: Key.pauseOnBattery)
         pauseInLowPowerMode = defaults.bool(forKey: Key.pauseInLowPowerMode)

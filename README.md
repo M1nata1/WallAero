@@ -13,6 +13,7 @@ Live wallpapers for macOS: videos, GIFs and pictures on your desktop — beneath
 - **GIFs and other animated images** are converted to H.264 once, on import. From then on they play through the hardware decoder like any other video, which is far more efficient than playing a GIF frame by frame. Small GIFs are scaled up by a whole number without smoothing, so pixel art stays crisp.
 - **Multiple displays:** one wallpaper on every screen or a different one on each; you can also turn it off on a single display.
 - **Energy saving:** playback pauses when the desktop is completely covered by windows or a full-screen app, while displays sleep and while the screen is locked. Optionally also on battery power and in Low Power Mode. Video never keeps the display awake.
+- **Your own music:** listen to your own songs in place of the video's sound. Pick a folder in Settings: its subfolders and `.m3u` files become playlists. With no folder chosen, the sound comes from the video. See [Music](#music).
 - **Cursors:** Windows cursor packs (`.ani`, `.cur`) replace the pointer across the whole system, animation included. Which file becomes which pointer is read from the pack's `install.inf`. See [Cursors](#cursors).
 - **Controls:** a menu bar icon (pause, next wallpaper, quick pick), a library window with drag and drop, and Open With → WallAero Engine in Finder.
 - **Settings:** scaling (fill / fit / stretch), speed, sound and volume, open at login, and the first frame as the regular macOS wallpaper (shown on the lock screen and in Mission Control).
@@ -58,6 +59,17 @@ The app is signed ad hoc, so a copy built on your own Mac opens right away, with
 3. Double-click a wallpaper (or click Set as Wallpaper), and it is on your desktop.
 
 Everything else is in the menu bar icon. While its windows are closed, the app takes no space in the Dock.
+
+## Music
+
+Open Settings → Playback → Music folder and pick a folder with your songs. Sound turns on by itself, and the music takes the place of the video's sound.
+
+- **Playlists.** Every subfolder with music in it is a playlist, and so is every `.m3u` or `.m3u8` file. In Settings you choose one playlist or All Music. Songs lying directly in the chosen folder play only under All Music.
+- **Order.** Songs play in order, around and around. Shuffle plays them in random order: each one once before any repeats.
+- **Formats:** MP3, M4A, AAC, WAV, AIFF and FLAC. A file that cannot be opened is skipped.
+- **Next Track** is in the menu bar icon's menu, which also shows the song that is playing.
+- **Pausing.** Music keeps playing while windows cover the desktop. It pauses together with the wallpaper: on Pause in the menu, while the screen is locked or the displays sleep and, if you turned those on, on battery power and in Low Power Mode. Without a wallpaper chosen, music does not play.
+- **Back to the video's sound:** click Remove next to the folder.
 
 ## Cursors
 
@@ -116,7 +128,7 @@ Cursors are registered with the WindowServer through undocumented CoreGraphics f
 
 ```
 Sources/
-  WallpaperCore/          import, GIF → H.264 conversion, thumbnails, library (no UI, covered by tests)
+  WallpaperCore/          import, GIF → H.264 conversion, thumbnails, library, music (no UI, covered by tests)
   CursorCore/             reading .ani/.cur and install.inf, applying and resetting cursors (covered by tests)
   CGSCursor/              Swift declarations of the undocumented cursor API (C)
   cursorctl/              command-line tool for cursors

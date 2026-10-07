@@ -53,6 +53,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     SettingsView()
                         .environmentObject(preferences)
                         .environmentObject(library)
+                        .environmentObject(manager)
                         .environmentObject(cursorSettings)
                 )
             }

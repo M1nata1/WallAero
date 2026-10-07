@@ -233,6 +233,169 @@ final class LegacyDataTests: XCTestCase {
     }
 }
 
+final class MusicFolderTests: XCTestCase {
+    private var root: URL!
+
+    override func setUpWithError() throws {
+        root = try TestMedia.directory()
+        addTeardownBlock { [root] in try? FileManager.default.removeItem(at: root!) }
+    }
+
+    private func touch(_ path: String, _ text: String = "") throws {
+        let url = root.appendingPathComponent(path)
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data(text.utf8).write(to: url)
+    }
+
+    private func names(_ tracks: [URL]) -> [String] {
+        tracks.map(\.lastPathComponent)
+    }
+
+    func testSubfoldersBecomePlaylistsAndLooseFilesBelongToNone() throws {
+        try touch("intro.mp3")
+        try touch("cover.jpg")
+        try touch(".hidden.mp3")
+        try touch("Rock/2 second.flac")
+        try touch("Rock/10 tenth.mp3")
+        try touch("Rock/1 first.m4a")
+        try touch("Rock/Live/encore.wav")
+        try touch("Rock/notes.txt")
+        try touch("Calm/rain.aiff")
+        try touch("Empty/readme.txt")
+
+        let folder = MusicFolder.scan(root)
+
+        XCTAssertEqual(folder.playlists.map(\.name), ["Calm", "Rock"], "a folder without music is not a playlist")
+        // Numbers sort the way Finder shows them, and nested folders are part of the playlist.
+        XCTAssertEqual(names(folder.tracks(inPlaylist: "Rock")), ["1 first.m4a", "2 second.flac", "10 tenth.mp3", "encore.wav"])
+        XCTAssertEqual(names(folder.allTracks), ["intro.mp3", "rain.aiff", "1 first.m4a", "2 second.flac", "10 tenth.mp3", "encore.wav"])
+        XCTAssertEqual(folder.tracks(inPlaylist: nil), folder.allTracks)
+        XCTAssertEqual(folder.tracks(inPlaylist: "Deleted"), folder.allTracks, "a playlist that is gone falls back to everything")
+    }
+
+    func testM3UFilesArePlaylistsInTheirOwnOrder() throws {
+        try touch("Songs/b.mp3")
+        try touch("Songs/a.mp3")
+        try touch("Songs/c.mp3")
+        try touch("Favourites.m3u", "#EXTM3U\n#EXTINF:123,Artist - C\nSongs/c.mp3\r\nSongs\\a.mp3\nSongs/missing.mp3\nhttp://example.com/stream.mp3\n\n")
+
+        let folder = MusicFolder.scan(root)
+
+        XCTAssertEqual(folder.playlists.map(\.name), ["Favourites", "Songs"])
+        XCTAssertEqual(names(folder.tracks(inPlaylist: "Favourites")), ["c.mp3", "a.mp3"], "playlist order, missing files and streams left out")
+        XCTAssertEqual(names(folder.allTracks).sorted(), ["a.mp3", "b.mp3", "c.mp3"], "a file in two playlists is listed once")
+    }
+
+    func testAFolderWithoutMusicHasNoTracks() throws {
+        try touch("picture.png")
+        XCTAssertTrue(MusicFolder.scan(root).allTracks.isEmpty)
+        XCTAssertTrue(MusicFolder.scan(root.appendingPathComponent("no such folder")).allTracks.isEmpty)
+    }
+}
+
+final class TrackQueueTests: XCTestCase {
+    private let tracks = (1...5).map { URL(fileURLWithPath: "/music/\($0).mp3") }
+
+    func testPlaysInOrderAndStartsOver() {
+        var queue = TrackQueue(tracks: tracks, shuffles: false)
+        var played = [queue.current]
+        for _ in 0..<6 { played.append(queue.advance()) }
+        XCTAssertEqual(played, tracks + [tracks[0], tracks[1]])
+    }
+
+    func testCanStartWithTheTrackThatIsPlaying() {
+        var queue = TrackQueue(tracks: tracks, shuffles: false, startingWith: tracks[3])
+        XCTAssertEqual(queue.current, tracks[3])
+        XCTAssertEqual(queue.advance(), tracks[4])
+        XCTAssertEqual(queue.advance(), tracks[0])
+        XCTAssertEqual(TrackQueue(tracks: tracks, shuffles: true, startingWith: tracks[3]).current, tracks[3])
+    }
+
+    func testShufflePlaysEveryTrackOnceBeforeRepeating() {
+        for _ in 0..<50 {
+            var queue = TrackQueue(tracks: tracks, shuffles: true)
+            var played = [queue.current!]
+            for _ in 0..<14 { played.append(queue.advance()!) }
+            for pass in stride(from: 0, to: 15, by: 5) {
+                XCTAssertEqual(Set(played[pass..<pass + 5]), Set(tracks))
+            }
+            for index in 1..<played.count {
+                XCTAssertNotEqual(played[index], played[index - 1], "never the same track twice in a row")
+            }
+        }
+    }
+
+    func testAnEmptyQueueHasNothingToPlay() {
+        var queue = TrackQueue()
+        XCTAssertNil(queue.current)
+        XCTAssertNil(queue.advance())
+    }
+}
+
+@MainActor
+final class PlaylistPlayerTests: XCTestCase {
+    private var root: URL!
+
+    override func setUp() async throws {
+        root = try TestMedia.directory()
+        addTeardownBlock { [root] in try? FileManager.default.removeItem(at: root!) }
+    }
+
+    /// Waits until the player reports each of the tracks in turn.
+    private func expect(_ player: PlaylistPlayer, toPlay tracks: [URL], file: StaticString = #filePath, line: UInt = #line) async {
+        for track in tracks {
+            let deadline = Date().addingTimeInterval(5)
+            while player.currentTrack != track, Date() < deadline {
+                try? await Task.sleep(nanoseconds: 20_000_000)
+            }
+            XCTAssertEqual(player.currentTrack?.lastPathComponent, track.lastPathComponent, file: file, line: line)
+        }
+    }
+
+    func testPlaysTheListAroundAndSkipsFilesItCannotOpen() async throws {
+        let first = root.appendingPathComponent("1.wav")
+        let broken = root.appendingPathComponent("2.mp3")
+        let last = root.appendingPathComponent("3.wav")
+        try TestMedia.writeSilentWAV(to: first, seconds: 0.3)
+        try Data("not audio".utf8).write(to: broken)
+        try TestMedia.writeSilentWAV(to: last, seconds: 0.3)
+
+        let player = PlaylistPlayer()
+        player.volume = 0
+        XCTAssertFalse(player.hasTracks)
+        player.setTracks([first, broken, last], shuffled: false)
+        XCTAssertTrue(player.hasTracks)
+        XCTAssertEqual(player.currentTrack, first, "known before playback starts")
+
+        player.setPlaying(true)
+        await expect(player, toPlay: [last, first, last])
+        player.setPlaying(false)
+    }
+
+    func testSkippingAndChangingTheList() async throws {
+        let urls = try (1...3).map { index -> URL in
+            let url = root.appendingPathComponent("\(index).wav")
+            try TestMedia.writeSilentWAV(to: url, seconds: 5)
+            return url
+        }
+        let player = PlaylistPlayer()
+        player.volume = 0
+        player.setTracks(urls, shuffled: false)
+        player.skipToNext()
+        XCTAssertEqual(player.currentTrack, urls[1])
+
+        // The track that is playing stays when it is on the new list too…
+        player.setTracks([urls[1], urls[2]], shuffled: false)
+        XCTAssertEqual(player.currentTrack, urls[1])
+        // …and gives way to the new list when it is not.
+        player.setTracks([urls[0]], shuffled: false)
+        XCTAssertEqual(player.currentTrack, urls[0])
+        player.setTracks([], shuffled: false)
+        XCTAssertNil(player.currentTrack)
+        XCTAssertFalse(player.hasTracks)
+    }
+}
+
 // MARK: - Helpers
 
 private func XCTUnwrapAsync<T>(_ value: @autoclosure () async throws -> T?) async throws -> T {
@@ -246,6 +409,23 @@ enum TestMedia {
             .appendingPathComponent("WallAeroEngineTests-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
         return url
+    }
+
+    /// A short mono WAV of silence: enough for a player to open, play through and finish.
+    static func writeSilentWAV(to url: URL, seconds: Double) throws {
+        let sampleRate: UInt32 = 8000
+        let dataSize = UInt32(Double(sampleRate) * seconds) * 2
+        var wav = Data("RIFF".utf8)
+        func append<T: FixedWidthInteger>(_ value: T) { withUnsafeBytes(of: value.littleEndian) { wav.append(contentsOf: $0) } }
+        append(36 + dataSize)
+        wav.append(Data("WAVEfmt ".utf8))
+        append(UInt32(16)); append(UInt16(1)); append(UInt16(1))  // PCM, mono
+        append(sampleRate); append(sampleRate * 2)                 // byte rate
+        append(UInt16(2)); append(UInt16(16))                      // block align, bits per sample
+        wav.append(Data("data".utf8))
+        append(dataSize)
+        wav.append(Data(count: Int(dataSize)))
+        try wav.write(to: url)
     }
 
     static func writeGIF(to url: URL, size: CGSize, delays: [Double]) throws {

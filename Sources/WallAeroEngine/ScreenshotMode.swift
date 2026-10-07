@@ -37,13 +37,15 @@ enum ScreenshotMode {
             .environmentObject(manager)
             .environmentObject(importer)
         // Tall enough to show every section without scrolling.
-        let settingsHeight: CGFloat = 945
+        let settingsHeight: CGFloat = 985
         let settingsView = SettingsView(height: settingsHeight)
             .environmentObject(preferences)
             .environmentObject(library)
+            .environmentObject(manager)
             .environmentObject(cursorSettings)
 
         Task {
+            await manager.readMusicFolderForDisplay()
             await shoot(AnyView(libraryView), title: "WallAero Engine", size: NSSize(width: 780, height: 440),
                         to: directory.appendingPathComponent("library.png"))
             await shoot(AnyView(settingsView), title: NSLocalizedString("Settings", comment: "Window title"),

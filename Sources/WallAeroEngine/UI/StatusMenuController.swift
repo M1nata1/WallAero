@@ -50,6 +50,11 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
         let status = NSMenuItem(title: manager.statusText, action: nil, keyEquivalent: "")
         status.isEnabled = false
         menu.addItem(status)
+        if manager.playsMusic, let track = manager.music.currentTrack {
+            let playing = NSMenuItem(title: "♪ " + track.deletingPathExtension().lastPathComponent, action: nil, keyEquivalent: "")
+            playing.isEnabled = false
+            menu.addItem(playing)
+        }
 
         let pauseTitle = manager.isPausedByUser
             ? NSLocalizedString("Resume", comment: "Menu item")
@@ -62,6 +67,10 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
                         symbol: "forward.end")
         next.isEnabled = !library.items.isEmpty
         menu.addItem(next)
+
+        if manager.playsMusic {
+            menu.addItem(item(NSLocalizedString("Next Track", comment: "Menu item"), #selector(playNextTrack), key: "t", symbol: "forward"))
+        }
 
         let wallpapers = NSMenuItem(title: NSLocalizedString("Wallpaper", comment: "Menu item"), action: nil, keyEquivalent: "")
         wallpapers.submenu = wallpaperMenu()
@@ -147,6 +156,7 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
 
     @objc private func togglePause() { manager.isPausedByUser.toggle() }
     @objc private func showNextWallpaper() { manager.showNextWallpaper() }
+    @objc private func playNextTrack() { manager.music.skipToNext() }
     @objc private func turnOff() { manager.setWallpaper(nil, for: .all) }
     @objc private func addFiles() { actions.addFiles() }
     @objc private func openLibrary() { actions.openLibrary() }

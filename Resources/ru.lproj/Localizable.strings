@@ -62,6 +62,14 @@
 "Normal" = "Обычная";
 "Play sound" = "Воспроизводить звук";
 "Volume" = "Громкость";
+"Music folder" = "Папка с музыкой";
+"Remove" = "Убрать";
+"Playlist" = "Плейлист";
+"All Music" = "Вся музыка";
+"Shuffle" = "Перемешивать";
+"Choose a folder with music. Its subfolders and .m3u files become playlists." = "Выберите папку с музыкой. Вложенные папки и файлы .m3u станут плейлистами.";
+"No music was found in that folder." = "В этой папке нет музыки.";
+"MP3, M4A, AAC, WAV, AIFF and FLAC files are supported." = "Поддерживаются файлы MP3, M4A, AAC, WAV, AIFF и FLAC.";
 "Energy" = "Энергосбережение";
 "Pause when windows cover the desktop" = "Ставить на паузу, когда окна закрывают рабочий стол";
 "Pause on battery power" = "Ставить на паузу при работе от аккумулятора";
@@ -73,6 +81,7 @@
 
 /* Menus */
 "Next Wallpaper" = "Следующие обои";
+"Next Track" = "Следующий трек";
 "Wallpaper" = "Обои";
 "The library is empty" = "Библиотека пуста";
 "Add Wallpapers…" = "Добавить обои…";

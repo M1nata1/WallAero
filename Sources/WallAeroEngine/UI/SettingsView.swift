@@ -32,6 +32,7 @@ struct SettingsView: View {
                     Image(systemName: "speaker.wave.3.fill")
                 }
                 .disabled(!preferences.playsSound)
+                MusicSettingsRows()
             }
 
             Section("Energy") {
@@ -81,5 +82,69 @@ struct SettingsView: View {
             return NSLocalizedString("Normal", comment: "Playback speed 1×")
         }
         return String(format: "%g×", rate)
+    }
+}
+
+/// The rows for the user's own music: the folder, and once it is chosen, the playlist and order.
+/// With music in the folder it plays in place of the videos' sound.
+private struct MusicSettingsRows: View {
+    @EnvironmentObject private var preferences: Preferences
+    @EnvironmentObject private var manager: WallpaperManager
+
+    var body: some View {
+        LabeledContent("Music folder") {
+            HStack(spacing: 8) {
+                if let path = preferences.musicFolderPath {
+                    Text(URL(fileURLWithPath: path).lastPathComponent)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+                Button(preferences.musicFolderPath == nil ? "Choose Folder…" : "Change…", action: chooseFolder)
+                if preferences.musicFolderPath != nil {
+                    Button("Remove") {
+                        preferences.musicFolderPath = nil
+                        preferences.musicPlaylist = nil
+                    }
+                }
+            }
+        }
+        if let playlists = manager.musicFolder?.playlists, !playlists.isEmpty {
+            Picker("Playlist", selection: $preferences.musicPlaylist) {
+                Text("All Music").tag(String?.none)
+                ForEach(playlists) { playlist in
+                    Text(playlist.name).tag(String?.some(playlist.name))
+                }
+            }
+            .disabled(!preferences.playsSound)
+        }
+        if preferences.musicFolderPath != nil {
+            Toggle("Shuffle", isOn: $preferences.shufflesMusic)
+                .disabled(!preferences.playsSound)
+        }
+    }
+
+    private func chooseFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        panel.prompt = NSLocalizedString("Choose", comment: "Open panel button")
+        panel.message = NSLocalizedString("Choose a folder with music. Its subfolders and .m3u files become playlists.", comment: "Open panel")
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        Task {
+            let folder = await Task.detached(priority: .userInitiated) { MusicFolder.scan(url) }.value
+            guard !folder.allTracks.isEmpty else {
+                let alert = NSAlert()
+                alert.messageText = NSLocalizedString("No music was found in that folder.", comment: "Music folder alert")
+                alert.informativeText = NSLocalizedString("MP3, M4A, AAC, WAV, AIFF and FLAC files are supported.", comment: "Music folder alert")
+                alert.runModal()
+                return
+            }
+            preferences.musicPlaylist = nil
+            preferences.musicFolderPath = url.path
+            // Whoever picks music wants to hear it.
+            preferences.playsSound = true
+        }
     }
 }
