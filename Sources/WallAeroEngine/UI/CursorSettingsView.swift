@@ -92,23 +92,23 @@ struct CursorSettingsSection: View {
             }
 
             if !cursor.previews.isEmpty {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(alignment: .top, spacing: 14) {
-                        ForEach(cursor.previews) { item in
-                            VStack(spacing: 4) {
-                                AnimatedCursorImage(frames: item.frames, durations: item.durations)
-                                    .frame(width: 36, height: 36)
-                                Text(item.name)
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
-                                    .multilineTextAlignment(.center)
-                                    .lineLimit(2)
-                                    .frame(width: 72)
-                            }
+                // A grid that wraps, not a horizontal strip: a mouse wheel scrolls only up and
+                // down, so cursors past the edge of a strip could not be reached with a mouse.
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 76), spacing: 8, alignment: .top)], spacing: 12) {
+                    ForEach(cursor.previews) { item in
+                        VStack(spacing: 4) {
+                            AnimatedCursorImage(frames: item.frames, durations: item.durations)
+                                .frame(width: 36, height: 36)
+                            Text(item.name)
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .multilineTextAlignment(.center)
+                                .lineLimit(2)
+                                .frame(maxWidth: .infinity)
                         }
                     }
-                    .padding(.vertical, 4)
                 }
+                .padding(.vertical, 4)
 
                 HStack {
                     Button("Apply", action: cursor.apply)
