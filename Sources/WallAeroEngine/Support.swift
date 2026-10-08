@@ -42,9 +42,10 @@ extension Wallpaper {
         ByteCountFormatter.string(fromByteCount: fileSize, countStyle: .file)
     }
 
-    /// One line of details for the library: "1920×1080 · 12.0 s · 24 MB".
+    /// One line of details for the library: "1920×1080 · 12.0 s · 24 MB". A web wallpaper fits
+    /// any screen, so it has no resolution to show.
     var detailsText: String {
-        [resolutionText, durationText, fileSizeText].compactMap { $0 }.joined(separator: " · ")
+        [pixelWidth > 0 ? resolutionText : nil, durationText, fileSizeText].compactMap { $0 }.joined(separator: " · ")
     }
 }
 
@@ -59,5 +60,10 @@ enum ThumbnailCache {
         guard let image = NSImage(contentsOf: url) else { return nil }
         cache.setObject(image, forKey: url as NSURL)
         return image
+    }
+
+    /// For a thumbnail that was rendered again into the same file.
+    static func forget(_ url: URL) {
+        cache.removeObject(forKey: url as NSURL)
     }
 }

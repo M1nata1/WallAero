@@ -1,0 +1,2 @@
+/* Shown by macOS when the app first asks to listen to the Mac's sound. */
+"NSAudioCaptureUsageDescription" = "Так обои с эквалайзером смогут двигаться под звук, который играет на Mac. Звук не записывается и никуда не отправляется.";

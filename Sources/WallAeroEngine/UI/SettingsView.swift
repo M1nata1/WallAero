@@ -33,6 +33,9 @@ struct SettingsView: View {
                 }
                 .disabled(!preferences.playsSound)
                 MusicSettingsRows()
+                if #available(macOS 14.2, *) {
+                    Toggle("Wallpapers react to sound", isOn: $preferences.reactsToSound)
+                }
             }
 
             Section("Energy") {

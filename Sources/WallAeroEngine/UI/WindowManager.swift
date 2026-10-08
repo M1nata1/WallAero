@@ -1,12 +1,15 @@
 import AppKit
 import SwiftUI
 
-/// Creates the library and settings windows on demand. While one of them is open the app shows
-/// a Dock icon and a main menu; once they are closed it goes back to living in the menu bar.
+/// Creates the library, settings and scene editor windows on demand. While one of them is open
+/// the app shows a Dock icon and a main menu; once they are closed it goes back to living in the
+/// menu bar.
 @MainActor
 final class WindowManager: NSObject, NSWindowDelegate {
     private(set) var libraryWindow: NSWindow?
     private var settingsWindow: NSWindow?
+    /// One editor per scene, and what to do when it closes.
+    private var editors: [UUID: (window: NSWindow, onClose: () -> Void)] = [:]
     private let makeLibraryView: () -> AnyView
     private let makeSettingsView: () -> AnyView
 
@@ -18,6 +21,24 @@ final class WindowManager: NSObject, NSWindowDelegate {
     /// The window an alert or open panel should attach to, if any is on screen.
     var visibleWindow: NSWindow? {
         [libraryWindow, settingsWindow].compactMap { $0 }.first { $0.isVisible }
+    }
+
+    private var allWindows: [NSWindow] {
+        [libraryWindow, settingsWindow].compactMap { $0 } + editors.values.map(\.window)
+    }
+
+    /// Brings the scene's editor to the front if it is open already.
+    func showOpenEditor(for id: UUID) -> Bool {
+        guard let editor = editors[id] else { return false }
+        present(editor.window)
+        return true
+    }
+
+    func showEditor(for id: UUID, title: String, content: AnyView, onClose: @escaping () -> Void) {
+        let window = makeWindow(title: title, content: content, size: NSSize(width: 1240, height: 760),
+                                resizable: true, autosaveName: "SceneEditorWindow")
+        editors[id] = (window, onClose)
+        present(window)
     }
 
     func showLibrary() {
@@ -78,10 +99,8 @@ final class WindowManager: NSObject, NSWindowDelegate {
 
     func windowWillClose(_ notification: Notification) {
         let closing = notification.object as? NSWindow
-        let othersVisible = [libraryWindow, settingsWindow].contains { window in
-            guard let window, window !== closing else { return false }
-            return window.isVisible
-        }
+        let othersVisible = allWindows.contains { $0 !== closing && $0.isVisible }
+        editors.first { $0.value.window === closing }?.value.onClose()
         if !othersVisible {
             NSApp.setActivationPolicy(.accessory)
         }
@@ -92,6 +111,9 @@ final class WindowManager: NSObject, NSWindowDelegate {
             guard let self else { return }
             if closing === self.libraryWindow { self.libraryWindow = nil }
             if closing === self.settingsWindow { self.settingsWindow = nil }
+            if let id = self.editors.first(where: { $0.value.window === closing })?.key {
+                self.editors[id] = nil
+            }
         }
     }
 }

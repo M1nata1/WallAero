@@ -8,6 +8,8 @@ public enum ImportError: LocalizedError, Equatable {
     /// AVFoundation recognises the container but cannot decode it (WebM, AV1 on older Macs, …).
     case undecodableVideo
     case conversionFailed(String)
+    /// The folder has no page to show.
+    case noWebPage
 
     public var errorDescription: String? {
         switch self {
@@ -30,6 +32,8 @@ public enum ImportError: LocalizedError, Equatable {
                 "macOS cannot play this video. Convert it to MP4 or MOV (H.264 or HEVC).",
                 comment: "Import error"
             )
+        case .noWebPage:
+            return NSLocalizedString("The folder has no web page to show. It needs an index.html.", comment: "Import error")
         case .conversionFailed(let reason):
             return String(
                 format: NSLocalizedString("Conversion failed: %@", comment: "Import error; the argument is the reason"),

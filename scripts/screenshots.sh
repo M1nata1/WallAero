@@ -17,3 +17,10 @@ shoot() {
 
 shoot en en_US
 shoot ru ru_RU
+
+# The scene editor needs a scene to show. Point WALLAERO_DEMO_SCENE at a scene's folder (Show
+# Folder in the editor opens it) to retake that picture too; the folder's name is the window title.
+if [ -n "${WALLAERO_DEMO_SCENE:-}" ]; then
+    "$APP/Contents/MacOS/WallAeroEngine" --edit-scene "$WALLAERO_DEMO_SCENE" "$PWD/docs/screenshots/en/editor.png" --select 1 -AppleLanguages "(en)" -AppleLocale en_US
+    "$APP/Contents/MacOS/WallAeroEngine" --edit-scene "$WALLAERO_DEMO_SCENE" "$PWD/docs/screenshots/ru/editor.png" --select 1 -AppleLanguages "(ru)" -AppleLocale ru_RU
+fi

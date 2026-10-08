@@ -19,6 +19,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     static func main() {
         let app = NSApplication.shared
+        if let request = ScreenshotMode.renderRequest {
+            // A developer's helper that needs neither the library nor the rest of the app.
+            ScreenshotMode.renderWeb(request)
+            app.run()
+            return
+        }
+        if let request = ScreenshotMode.editRequest {
+            ScreenshotMode.editScene(request)
+            app.run()
+            return
+        }
+        if let target = ScreenshotMode.readyTestTarget {
+            ScreenshotMode.readyTest(target)
+            app.run()
+            return
+        }
+        if let seconds = ScreenshotMode.soundTestSeconds {
+            ScreenshotMode.soundTest(seconds: seconds)
+            app.run()
+            return
+        }
         // The screenshot helper runs next to the copy in use and must not move its data.
         if ScreenshotMode.outputDirectory == nil {
             LegacyMigration.run()
@@ -41,7 +62,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 AnyView(
                     LibraryView(actions: LibraryActions(
                         addFiles: { [unowned self] in addWallpapers(nil) },
-                        openSettings: { [unowned self] in showSettings(nil) }
+                        openSettings: { [unowned self] in showSettings(nil) },
+                        editScene: { [unowned self] item in editScene(item) }
                     ))
                     .environmentObject(library)
                     .environmentObject(manager)
@@ -123,6 +145,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc func showSettings(_ sender: Any?) {
         windows.showSettings()
+    }
+
+    /// Opens the editor for a scene of the library, or brings it forward if it is open.
+    func editScene(_ item: Wallpaper) {
+        guard !windows.showOpenEditor(for: item.id) else { return }
+        do {
+            let model = try SceneEditorModel(folder: library.projectURL(for: item), title: item.name)
+            // The library thumbnail and the lock-screen still follow the edits.
+            model.onSave = { [weak self] in self?.manager.webWallpaperDidChange(item) }
+            let preview = SceneEditorPreviewController(model: model)
+            windows.showEditor(for: item.id, title: item.name,
+                               content: AnyView(SceneEditorView(model: model, preview: preview)),
+                               onClose: { model.saveNow() })
+        } catch {
+            NSAlert(error: error).runModal()
+        }
     }
 
     @objc func showAbout(_ sender: Any?) {

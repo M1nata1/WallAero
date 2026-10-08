@@ -7,6 +7,9 @@ public struct Wallpaper: Codable, Identifiable, Hashable, Sendable {
         case video
         /// A still picture.
         case image
+        /// A web page in a folder of its own: a scene made in the editor, or any page with an
+        /// `index.html`. `fileName` is the page, relative to the library's web folder.
+        case web
     }
 
     public let id: UUID

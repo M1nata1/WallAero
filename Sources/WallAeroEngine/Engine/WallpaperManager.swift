@@ -70,6 +70,10 @@ final class WallpaperManager: NSObject, ObservableObject {
     private var sessionActive = true
     /// The music folder being read in the background, so the same scan is not started twice.
     private var scanningMusicPath: String?
+    /// Web wallpapers whose pictures are due to be rendered again, once the edits settle.
+    private var pendingWebRefresh: [UUID: Task<Void, Never>] = [:]
+    /// Stills of web wallpapers being rendered, so two displays do not render the same one twice.
+    private var webStillTasks: [UUID: Task<URL, Error>] = [:]
     /// Still images already handed to macOS, per display, to avoid redundant updates.
     private var syncedSystemWallpapers: [String: UUID] = [:]
 
@@ -124,6 +128,10 @@ final class WallpaperManager: NSObject, ObservableObject {
 
         rebuildScreens()
         reloadMusic()
+        // Scenes edited by hand while the app was not looking get their thumbnails redone.
+        for item in library.items where item.kind == .web {
+            refreshPicturesIfOutdated(of: item)
+        }
     }
 
     // MARK: - Choosing wallpapers
@@ -224,6 +232,7 @@ final class WallpaperManager: NSObject, ObservableObject {
             screen.view.setAudio(muted: !audible, volume: Float(preferences.volume))
         }
         music.volume = Float(preferences.volume)
+        SoundSpectrum.shared.isEnabled = preferences.reactsToSound
     }
 
     /// Starts or stops every player according to the current state of the Mac.
@@ -257,6 +266,72 @@ final class WallpaperManager: NSObject, ObservableObject {
         updatePlayback()
         reloadMusic()
         syncSystemWallpapers()
+    }
+
+    // MARK: - Web wallpapers
+
+    /// The files of a web wallpaper changed. Once the edits settle, its thumbnail is rendered
+    /// again, and its still too if it serves as the macOS wallpaper.
+    func webWallpaperDidChange(_ item: Wallpaper) {
+        pendingWebRefresh[item.id]?.cancel()
+        pendingWebRefresh[item.id] = Task {
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
+            guard !Task.isCancelled else { return }
+            pendingWebRefresh[item.id] = nil
+            await refreshPictures(of: item)
+        }
+    }
+
+    /// A web wallpaper is watched only while it is on screen. If its files were changed in the
+    /// meantime, its thumbnail and still show the old look; this notices and has them redone.
+    func refreshPicturesIfOutdated(of item: Wallpaper) {
+        let folder = library.projectURL(for: item)
+        let files = (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: [.contentModificationDateKey],
+                                                                  options: [.skipsHiddenFiles])) ?? []
+        let changed = files.compactMap { (try? $0.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate }.max()
+        let thumbnail = library.thumbnailURL(for: item)
+            .flatMap { (try? $0.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate }
+        guard let changed, thumbnail.map({ $0 < changed }) ?? true else { return }
+        webWallpaperDidChange(item)
+    }
+
+    /// Renders the library thumbnail of a web wallpaper and drops its still, which is rendered
+    /// again when next needed.
+    func refreshPictures(of item: Wallpaper) async {
+        guard let current = library.item(withID: item.id), current.kind == .web,
+              let project = WebProject(folder: library.projectURL(for: current))
+        else {
+            return
+        }
+        if let picture = await WebSnapshotter.render(project, size: NSSize(width: 960, height: 540)) {
+            if let old = library.thumbnailURL(for: current) {
+                ThumbnailCache.forget(old)
+            }
+            library.setThumbnail(WebSnapshotter.thumbnail(from: picture), for: current.id)
+        }
+        library.removeStill(for: current)
+        resyncSystemWallpapers()
+    }
+
+    /// The still of a web wallpaper, rendered at the display's size if there is none yet.
+    private func webStill(for item: Wallpaper, size: NSSize) async throws -> URL {
+        if let rendered = library.renderedStillURL(for: item) {
+            return rendered
+        }
+        if let running = webStillTasks[item.id] {
+            return try await running.value
+        }
+        let task = Task { () throws -> URL in
+            defer { webStillTasks[item.id] = nil }
+            guard let project = WebProject(folder: library.projectURL(for: item)),
+                  let picture = await WebSnapshotter.render(project, size: size, forStill: true)
+            else {
+                throw ImportError.unreadable
+            }
+            return try library.setStill(picture, for: item)
+        }
+        webStillTasks[item.id] = task
+        return try await task.value
     }
 
     // MARK: - Music
@@ -354,7 +429,9 @@ final class WallpaperManager: NSObject, ObservableObject {
             syncedSystemWallpapers[displayID] = item.id
             Task {
                 do {
-                    let url = try await library.stillImageURL(for: item)
+                    let url = item.kind == .web
+                        ? try await webStill(for: item, size: screen.frame.size)
+                        : try await library.stillImageURL(for: item)
                     // What macOS reports is for the Space in front; skip it if it is right already.
                     let current = NSWorkspace.shared.desktopImageURL(for: screen)
                     guard current?.standardizedFileURL != url.standardizedFileURL else {
@@ -439,6 +516,10 @@ final class ScreenWallpaper: NSObject {
     private(set) var item: Wallpaper?
     private var isPlaying = false
     private weak var manager: WallpaperManager?
+    /// Tells a wallpaper that became ready late that another one has been asked for since.
+    private var showGeneration = 0
+    /// A wallpaper that cannot be shown is not waited for longer than this.
+    private static let longestWaitForPicture: TimeInterval = 3
 
     init(screen: NSScreen, displayID: String, manager: WallpaperManager) {
         self.displayID = displayID
@@ -467,7 +548,7 @@ final class ScreenWallpaper: NSObject {
     }
 
     func setPlaying(_ playing: Bool, rate: Float) {
-        if playing != isPlaying, let item, item.kind == .video {
+        if playing != isPlaying, let item, item.kind != .image {
             Log.playback.info("\(playing ? "Playing" : "Paused", privacy: .public) “\(item.name, privacy: .public)” on \(self.window.screen?.localizedName ?? self.displayID, privacy: .public)")
         }
         isPlaying = playing
@@ -483,13 +564,42 @@ final class ScreenWallpaper: NSObject {
             window.orderOut(nil)
             return
         }
+        // The window stays out of sight until the wallpaper has a picture to show. Until then
+        // the macOS wallpaper is what is seen, rather than a black screen.
+        showGeneration += 1
+        let generation = showGeneration
+        window.alphaValue = 0
+        view.onReady = { [weak self] in self?.reveal(generation) }
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.longestWaitForPicture) { [weak self] in
+            self?.reveal(generation)
+        }
         switch newItem.kind {
         case .video:
             view.showVideo(at: library.fileURL(for: newItem))
         case .image:
             view.showImage(at: library.fileURL(for: newItem))
+        case .web:
+            guard let project = WebProject(folder: library.projectURL(for: newItem)) else {
+                Log.playback.error("The web wallpaper “\(newItem.name, privacy: .public)” has no page to show")
+                view.clear()
+                break
+            }
+            view.showWeb(project)
+            view.webView?.onContentChange = { [weak self] in
+                guard let self else { return }
+                self.manager?.webWallpaperDidChange(newItem)
+            }
+            manager?.refreshPicturesIfOutdated(of: newItem)
         }
         window.orderFrontRegardless()
+    }
+
+    private func reveal(_ generation: Int) {
+        guard generation == showGeneration, window.alphaValue < 1 else { return }
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.3
+            window.animator().alphaValue = 1
+        }
     }
 
     func close() {

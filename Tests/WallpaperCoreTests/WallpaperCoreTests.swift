@@ -149,6 +149,74 @@ final class WallpaperLibraryTests: XCTestCase {
         XCTAssertTrue(leftovers.isEmpty)
     }
 
+    func testAWebFolderIsImportedWholeAndRemovedWhole() async throws {
+        let source = try TestMedia.directory()
+        addTeardownBlock { try? FileManager.default.removeItem(at: source) }
+        let folder = source.appendingPathComponent("Neon")
+        try FileManager.default.createDirectory(at: folder.appendingPathComponent("js"), withIntermediateDirectories: true)
+        try "<html></html>".write(to: folder.appendingPathComponent("index.html"), atomically: true, encoding: .utf8)
+        try "x".write(to: folder.appendingPathComponent("js/app.js"), atomically: true, encoding: .utf8)
+
+        let library = WallpaperLibrary(rootURL: root)
+        let item = try library.importWebProject(at: folder)
+
+        XCTAssertEqual(item.kind, .web)
+        XCTAssertEqual(item.name, "Neon")
+        XCTAssertEqual(item.sourceFormat, "WEB")
+        XCTAssertEqual(library.fileURL(for: item).lastPathComponent, "index.html")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: library.projectURL(for: item).appendingPathComponent("js/app.js").path))
+        XCTAssertFalse(library.isScene(item))
+        XCTAssertEqual(WallpaperLibrary(rootURL: root).items.map(\.id), [item.id], "survives a restart")
+        XCTAssertThrowsError(try library.importWebProject(at: source), "a folder without a page") { error in
+            XCTAssertEqual(error as? ImportError, .noWebPage)
+        }
+
+        library.remove([item.id])
+        XCTAssertFalse(FileManager.default.fileExists(atPath: library.projectURL(for: item).path))
+    }
+
+    func testAVideoBecomesASceneWithItselfAsTheBackground() async throws {
+        let videoURL = root.appendingPathComponent("source.gif")
+        try TestMedia.writeGIF(to: videoURL, size: CGSize(width: 64, height: 36), delays: [0.1, 0.1, 0.1])
+        let library = WallpaperLibrary(rootURL: root.appendingPathComponent("library"))
+        let video = try await library.importFile(at: videoURL)
+
+        let scene = try library.makeScene(from: video, named: "Editable")
+
+        XCTAssertEqual(scene.kind, .web)
+        XCTAssertEqual(scene.name, "Editable")
+        XCTAssertEqual(scene.sourceFormat, "SCENE")
+        XCTAssertTrue(library.isScene(scene))
+        XCTAssertEqual(library.items.map(\.id), [scene.id, video.id], "the original stays")
+        let stored = try SceneProject.read(from: library.projectURL(for: scene))
+        XCTAssertEqual(stored.background.kind, .video)
+        XCTAssertEqual(stored.background.source, "media/background.mov")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: library.projectURL(for: scene).appendingPathComponent("media/background.mov").path))
+        XCTAssertNotNil(library.thumbnailURL(for: scene), "starts with the original's thumbnail")
+        XCTAssertThrowsError(try library.makeScene(from: scene, named: "Again"), "a scene is edited, not wrapped again")
+    }
+
+    func testWebStillsGetANewFileNameEachTime() async throws {
+        let library = WallpaperLibrary(rootURL: root)
+        let folder = root.appendingPathComponent("page")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try "<html></html>".write(to: folder.appendingPathComponent("index.html"), atomically: true, encoding: .utf8)
+        let item = try library.importWebProject(at: folder)
+        let picture = try XCTUnwrap(Thumbnailer.image(at: try TestMedia.pngFile(in: root)))
+
+        XCTAssertNil(library.renderedStillURL(for: item))
+        let first = try library.setStill(picture, for: item)
+        try await Task.sleep(nanoseconds: 5_000_000)
+        let second = try library.setStill(picture, for: item)
+
+        XCTAssertNotEqual(first.lastPathComponent, second.lastPathComponent, "macOS ignores a changed picture under a known name")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: first.path), "the old still does not pile up")
+        let stillURL = try await library.stillImageURL(for: item)
+        XCTAssertEqual(stillURL, second)
+        library.remove([item.id])
+        XCTAssertFalse(FileManager.default.fileExists(atPath: second.path))
+    }
+
     func testLibraryIsPersistedRenamedAndCleanedUp() async throws {
         let png = root.appendingPathComponent("Calm.png")
         try TestMedia.writePNG(to: png, size: CGSize(width: 64, height: 64))
@@ -396,6 +464,227 @@ final class PlaylistPlayerTests: XCTestCase {
     }
 }
 
+final class WallpaperSceneTests: XCTestCase {
+    private var root: URL!
+
+    override func setUpWithError() throws {
+        root = try TestMedia.directory()
+        addTeardownBlock { [root] in try? FileManager.default.removeItem(at: root!) }
+    }
+
+    func testASceneSurvivesBeingWrittenAndReadBack() throws {
+        var clock = WallpaperScene.Layer(kind: .text, name: "Clock")
+        clock.text = "{HH}:{mm}"
+        clock.x = 25
+        clock.fontSize = 14
+        var logo = WallpaperScene.Layer(kind: .image, name: "Logo")
+        logo.source = "media/logo.png"
+        let scene = WallpaperScene(
+            background: .init(kind: .video, source: "media/background.mp4", fit: .contain, blur: 8, brightness: 70),
+            layers: [clock, logo]
+        )
+        try SceneProject.create(at: root, scene: scene)
+
+        XCTAssertEqual(try SceneProject.read(from: root), scene)
+        XCTAssertTrue(SceneProject.isScene(root))
+        for file in ["index.html", "runtime.js", "custom.css", "custom.js", "scene.json", "media"] {
+            XCTAssertTrue(FileManager.default.fileExists(atPath: root.appendingPathComponent(file).path), file)
+        }
+    }
+
+    func testMissingAndWrongValuesFallBackToDefaults() throws {
+        // As a person might write it by hand: few keys, one of them of the wrong type.
+        let json = #"{"background": {"kind": "image", "source": "a.png", "blur": "lots"}, "layers": [{"kind": "text", "text": "Hi", "x": 10}]}"#
+        let scene = try JSONDecoder().decode(WallpaperScene.self, from: Data(json.utf8))
+
+        XCTAssertEqual(scene.version, WallpaperScene.currentVersion)
+        XCTAssertEqual(scene.background.kind, .image)
+        XCTAssertEqual(scene.background.blur, 0)
+        XCTAssertEqual(scene.background.brightness, 100)
+        XCTAssertEqual(scene.layers.count, 1)
+        XCTAssertEqual(scene.layers[0].text, "Hi")
+        XCTAssertEqual(scene.layers[0].x, 10)
+        XCTAssertEqual(scene.layers[0].y, 50)
+        XCTAssertEqual(scene.layers[0].opacity, 100)
+        XCTAssertTrue(scene.layers[0].isVisible)
+        XCTAssertTrue(scene.layers[0].showsOnLockScreen, "scenes saved before the setting existed keep showing everything")
+    }
+
+    func testALayerCanBeLeftOutOfTheLockScreenPicture() throws {
+        var clock = WallpaperScene.Layer(kind: .text, name: "Clock")
+        XCTAssertTrue(clock.showsOnLockScreen)
+        clock.showsOnLockScreen = false
+        try SceneProject.create(at: root, scene: WallpaperScene(layers: [clock]))
+
+        XCTAssertFalse(try SceneProject.read(from: root).layers[0].showsOnLockScreen)
+        let text = try String(contentsOf: root.appendingPathComponent("scene.json"), encoding: .utf8)
+        XCTAssertTrue(text.contains("\"showsOnLockScreen\" : false"))
+        // The page has to act on it, or the setting would do nothing.
+        XCTAssertTrue(try String(contentsOf: root.appendingPathComponent("runtime.js"), encoding: .utf8).contains("showsOnLockScreen"))
+    }
+
+    func testGeneratedFilesAreRefreshedButCustomOnesAreKept() throws {
+        try SceneProject.create(at: root, scene: WallpaperScene())
+        XCTAssertFalse(try SceneProject.refreshGeneratedFiles(in: root), "nothing to do right after creating")
+
+        // An older version of the app left an old runtime; the user has written their own script.
+        try "old".write(to: root.appendingPathComponent("runtime.js"), atomically: true, encoding: .utf8)
+        try "mine".write(to: root.appendingPathComponent("custom.js"), atomically: true, encoding: .utf8)
+
+        XCTAssertTrue(try SceneProject.refreshGeneratedFiles(in: root))
+        XCTAssertTrue(try String(contentsOf: root.appendingPathComponent("runtime.js"), encoding: .utf8).contains("wallaero"))
+        XCTAssertEqual(try String(contentsOf: root.appendingPathComponent("custom.js"), encoding: .utf8), "mine")
+    }
+
+    func testMediaIsCopiedUnderAPlainUniqueName() throws {
+        let picture = root.appendingPathComponent("Моя картинка #1.PNG")
+        try TestMedia.writePNG(to: picture, size: CGSize(width: 8, height: 8))
+        let project = root.appendingPathComponent("project")
+
+        let first = try SceneProject.addMedia(picture, to: project)
+        let second = try SceneProject.addMedia(picture, to: project)
+        let named = try SceneProject.addMedia(picture, to: project, named: "background")
+
+        XCTAssertEqual(first, "media/1.png", "only plain characters survive, as the name goes into a URL")
+        XCTAssertEqual(second, "media/1-2.png")
+        XCTAssertEqual(named, "media/background.png")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: project.appendingPathComponent(second).path))
+    }
+}
+
+final class WebProjectTests: XCTestCase {
+    private var root: URL!
+
+    override func setUpWithError() throws {
+        root = try TestMedia.directory()
+        addTeardownBlock { [root] in try? FileManager.default.removeItem(at: root!) }
+    }
+
+    private func write(_ text: String, to name: String) throws {
+        try text.write(to: root.appendingPathComponent(name), atomically: true, encoding: .utf8)
+    }
+
+    func testAFolderWithAnIndexPageIsAWebWallpaper() throws {
+        try write("<html></html>", to: "index.html")
+        try write("<html></html>", to: "about.html")
+        let project = try XCTUnwrap(WebProject(folder: root))
+        XCTAssertEqual(project.entryFile, "index.html")
+        XCTAssertNil(project.title)
+        XCTAssertNil(project.userPropertiesJSON)
+        XCTAssertFalse(project.isScene)
+    }
+
+    func testReadsAWallpaperEngineProject() throws {
+        try write("<html></html>", to: "main.html")
+        try TestMedia.writePNG(to: root.appendingPathComponent("preview.png"), size: CGSize(width: 8, height: 8))
+        try write(#"{"file": "main.html", "type": "web", "title": "Neon Rain", "preview": "preview.png", "general": {"properties": {"speed": {"type": "slider", "value": 3}}}}"#, to: "project.json")
+
+        let project = try XCTUnwrap(WebProject(folder: root))
+        XCTAssertEqual(project.entryFile, "main.html")
+        XCTAssertEqual(project.title, "Neon Rain")
+        XCTAssertEqual(project.previewFile, "preview.png")
+        XCTAssertEqual(project.userPropertiesJSON, #"{"speed":{"type":"slider","value":3}}"#)
+    }
+
+    func testOtherKindsOfWallpaperEngineProjectsAndEmptyFoldersAreNotWebWallpapers() throws {
+        XCTAssertNil(WebProject(folder: root), "no page at all")
+        try write("<html></html>", to: "a.html")
+        try write("<html></html>", to: "b.html")
+        XCTAssertNil(WebProject(folder: root), "two pages and neither is index.html: which one?")
+        try write("<html></html>", to: "index.html")
+        try write(#"{"file": "scene.pkg", "type": "scene"}"#, to: "project.json")
+        XCTAssertNil(WebProject(folder: root), "a Wallpaper Engine scene is not a page")
+    }
+
+    func testASceneIsRecognisedBeforeItsPageIsGenerated() throws {
+        try write("{}", to: "scene.json")
+        let project = try XCTUnwrap(WebProject(folder: root))
+        XCTAssertTrue(project.isScene)
+        XCTAssertEqual(project.entryFile, "index.html")
+    }
+}
+
+final class SpectrumAnalyzerTests: XCTestCase {
+    private let analyzer = SpectrumAnalyzer(sampleRate: 48_000)
+    private let frame = 1.0 / 30
+
+    private func tone(_ frequency: Double, volume: Float = 0.5) -> [Float] {
+        (0..<analyzer.windowSize).map { volume * Float(sin(2 * Double.pi * frequency * Double($0) / analyzer.sampleRate)) }
+    }
+
+    private var quiet: [Float] { [Float](repeating: 0, count: analyzer.windowSize) }
+
+    /// The band whose centre is nearest to a frequency.
+    private func band(for frequency: Double) -> Int {
+        (0..<SpectrumAnalyzer.bandCount).min { abs(log(analyzer.frequency(ofBand: $0) / frequency)) < abs(log(analyzer.frequency(ofBand: $1) / frequency)) }!
+    }
+
+    func testBandsRunFromLowNotesToHighOnes() {
+        let frequencies = (0..<SpectrumAnalyzer.bandCount).map(analyzer.frequency(ofBand:))
+        XCTAssertEqual(frequencies, frequencies.sorted())
+        XCTAssertLessThan(frequencies[0], 50)
+        XCTAssertGreaterThan(frequencies[63], 12_000)
+    }
+
+    func testAToneLightsItsOwnBandAndLeavesTheRestDark() {
+        let levels = analyzer.levels(left: tone(1000), right: tone(1000), interval: frame)
+        XCTAssertEqual(levels.count, 2 * SpectrumAnalyzer.bandCount)
+        let lit = band(for: 1000)
+        XCTAssertEqual(levels[lit], 1, accuracy: 0.05)
+        XCTAssertEqual(levels[lit + 64], 1, accuracy: 0.05, "the right channel follows the left's bands")
+        for index in 0..<SpectrumAnalyzer.bandCount where abs(index - lit) > 6 {
+            XCTAssertEqual(levels[index], 0, "band \(index) is far from the tone")
+        }
+    }
+
+    func testLowAndHighTonesLandAtOppositeEnds() {
+        let low = analyzer.levels(left: tone(60), right: tone(60), interval: frame)
+        XCTAssertLessThan(low.firstIndex(of: low.max()!)!, 8)
+        let other = SpectrumAnalyzer(sampleRate: 48_000)
+        let high = other.levels(left: tone(10_000), right: tone(10_000), interval: frame)
+        XCTAssertGreaterThan(high[..<64].firstIndex(of: high[..<64].max()!)!, 54)
+    }
+
+    func testChannelsAreKeptApart() {
+        let levels = analyzer.levels(left: tone(1000), right: quiet, interval: frame)
+        XCTAssertGreaterThan(levels[..<64].max()!, 0.9)
+        XCTAssertEqual(levels[64...].max()!, 0)
+    }
+
+    func testAQuietSourceFillsTheBarsLikeALoudOne() {
+        let loud = analyzer.levels(left: tone(1000, volume: 0.5), right: quiet, interval: frame)
+        let other = SpectrumAnalyzer(sampleRate: 48_000)
+        let soft = other.levels(left: tone(1000, volume: 0.02), right: quiet, interval: frame)
+        XCTAssertEqual(soft.max()!, loud.max()!, accuracy: 0.01)
+    }
+
+    func testHissIsNotBlownUpIntoMusic() {
+        let levels = analyzer.levels(left: tone(1000, volume: 0.000_05), right: quiet, interval: frame)
+        XCTAssertLessThan(levels.max()!, 0.3)
+    }
+
+    func testLevelsFallAwayGraduallyInSilence() {
+        _ = analyzer.levels(left: tone(1000), right: tone(1000), interval: frame)
+        let lit = band(for: 1000)
+        let afterOneFrame = analyzer.silence(interval: frame)[lit]
+        XCTAssertGreaterThan(afterOneFrame, 0.8, "a bar does not drop to the floor at once")
+        XCTAssertLessThan(afterOneFrame, 1)
+        var levels: [Float] = []
+        for _ in 0..<30 {
+            levels = analyzer.silence(interval: frame)
+        }
+        XCTAssertEqual(levels.max()!, 0, "a second of silence leaves every bar down")
+    }
+
+    func testOtherSampleRatesKeepTheSameBands() {
+        let other = SpectrumAnalyzer(sampleRate: 44_100)
+        XCTAssertEqual(other.frequency(ofBand: 20), analyzer.frequency(ofBand: 20), accuracy: 0.01)
+        let samples = (0..<other.windowSize).map { 0.5 * Float(sin(2 * Double.pi * 1000 * Double($0) / 44_100)) }
+        let levels = other.levels(left: samples, right: samples, interval: frame)
+        XCTAssertEqual(levels.firstIndex(of: levels.max()!)!, band(for: 1000), accuracy: 1)
+    }
+}
+
 // MARK: - Helpers
 
 private func XCTUnwrapAsync<T>(_ value: @autoclosure () async throws -> T?) async throws -> T {
@@ -440,6 +729,13 @@ enum TestMedia {
             CGImageDestinationAddImage(destination, frame, properties)
         }
         XCTAssertTrue(CGImageDestinationFinalize(destination))
+    }
+
+    /// A small PNG written into the folder; returns where it is.
+    static func pngFile(in folder: URL) throws -> URL {
+        let url = folder.appendingPathComponent("picture-\(UUID().uuidString).png")
+        try writePNG(to: url, size: CGSize(width: 16, height: 9))
+        return url
     }
 
     static func writePNG(to url: URL, size: CGSize) throws {

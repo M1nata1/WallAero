@@ -56,8 +56,17 @@ final class ImportCoordinator: ObservableObject {
             while let job = jobs.first {
                 do {
                     let jobID = job.id
-                    let item = try await library.importFile(at: job.url) { [weak self] progress in
-                        Task { @MainActor in self?.setProgress(progress, for: jobID) }
+                    let item: Wallpaper
+                    if Self.isWebProject(job.url) {
+                        item = try library.importWebProject(at: job.url)
+                        if item.thumbnailFileName == nil {
+                            // No preview came with the page; draw one.
+                            await manager.refreshPictures(of: item)
+                        }
+                    } else {
+                        item = try await library.importFile(at: job.url) { [weak self] progress in
+                            Task { @MainActor in self?.setProgress(progress, for: jobID) }
+                        }
                     }
                     lastImportedID = item.id
                     if job.appliesWhenDone || !manager.hasWallpaper {
@@ -81,11 +90,19 @@ final class ImportCoordinator: ObservableObject {
         jobs[index].progress = progress
     }
 
+    private static func isWebProject(_ url: URL) -> Bool {
+        (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true && WebProject(folder: url) != nil
+    }
+
     /// A folder becomes the importable files inside it; a file is kept as is, so that
     /// unsupported files produce a clear error instead of being silently skipped.
     private static func expand(_ url: URL) -> [URL] {
         let isDirectory = (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory ?? false
         guard isDirectory else { return [url] }
+        // A folder with a page in it is one web wallpaper, not a pile of pictures to look through.
+        if WebProject(folder: url) != nil {
+            return [url]
+        }
         guard let enumerator = FileManager.default.enumerator(
             at: url,
             includingPropertiesForKeys: [.isRegularFileKey],

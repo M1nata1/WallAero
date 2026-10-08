@@ -5,6 +5,8 @@ import WallpaperCore
 struct LibraryActions {
     var addFiles: () -> Void
     var openSettings: () -> Void
+    /// Opens the scene editor for a scene of the library.
+    var editScene: (Wallpaper) -> Void = { _ in }
 }
 
 struct LibraryView: View {
@@ -151,6 +153,9 @@ struct LibraryView: View {
                 }
             }
         }
+        if canEdit(item) {
+            Button(editTitle(for: item)) { edit(item) }
+        }
         Divider()
         Button("Rename…") {
             newName = item.name
@@ -189,6 +194,9 @@ struct LibraryView: View {
             if currentID != nil {
                 Button("Turn Off") { manager.setWallpaper(nil, for: target) }
             }
+            if let item = selectedItem, canEdit(item) {
+                Button(editTitle(for: item)) { edit(item) }
+            }
             Button("Set as Wallpaper") {
                 if let item = selectedItem {
                     apply(item)
@@ -215,6 +223,31 @@ struct LibraryView: View {
     private func apply(_ item: Wallpaper) {
         selection = item.id
         manager.setWallpaper(item.id, for: target)
+    }
+
+    /// Scenes open in the editor; a video or picture first becomes a scene with itself as the
+    /// background. Other web wallpapers are someone else's pages and are shown as they are.
+    private func canEdit(_ item: Wallpaper) -> Bool {
+        item.kind != .web || library.isScene(item)
+    }
+
+    private func editTitle(for item: Wallpaper) -> LocalizedStringKey {
+        item.kind == .web ? "Edit…" : "Edit as Scene…"
+    }
+
+    private func edit(_ item: Wallpaper) {
+        if item.kind == .web {
+            actions.editScene(item)
+            return
+        }
+        do {
+            let name = String(format: NSLocalizedString("%@ (scene)", comment: "Name of a scene made from a wallpaper"), item.name)
+            let scene = try library.makeScene(from: item, named: name)
+            selection = scene.id
+            actions.editScene(scene)
+        } catch {
+            NSAlert(error: error).runModal()
+        }
     }
 
     private func delete(_ item: Wallpaper) {
@@ -288,7 +321,7 @@ struct WallpaperTile: View {
                         .resizable()
                         .scaledToFill()
                 } else {
-                    Image(systemName: item.kind == .video ? "film" : "photo")
+                    Image(systemName: item.kind == .video ? "film" : item.kind == .web ? "square.3.layers.3d" : "photo")
                         .font(.largeTitle)
                         .foregroundStyle(.secondary)
                 }

@@ -27,10 +27,17 @@ final class WallpaperWindow: NSWindow {
     override var canBecomeMain: Bool { false }
 }
 
-/// Draws one wallpaper: an AVPlayerLayer for video, a plain layer for still pictures.
+/// Draws one wallpaper: an AVPlayerLayer for video, a plain layer for still pictures and a web
+/// view, added only when needed, for scenes and other web wallpapers.
 final class WallpaperView: NSView {
     private let playerLayer = AVPlayerLayer()
     private let imageLayer = CALayer()
+    private(set) var webView: WebWallpaperView?
+    /// Called once what was asked for can be seen: at once for a picture, with the first frame
+    /// for a video, when the page has drawn for a web wallpaper.
+    var onReady: (() -> Void)?
+    private(set) var isReady = false
+    private var firstFrame: NSKeyValueObservation?
     private var player: AVQueuePlayer?
     private var looper: AVPlayerLooper?
     private var looperStatus: NSKeyValueObservation?
@@ -81,6 +88,10 @@ final class WallpaperView: NSView {
         clear()
         videoURL = url
         playerLayer.isHidden = false
+        firstFrame = playerLayer.observe(\.isReadyForDisplay, options: [.new]) { [weak self] layer, _ in
+            guard layer.isReadyForDisplay else { return }
+            DispatchQueue.main.async { self?.contentIsReady() }
+        }
         loadPlayer()
     }
 
@@ -91,9 +102,34 @@ final class WallpaperView: NSView {
         // Decoding at screen resolution keeps memory low for huge photos.
         imageLayer.contents = Thumbnailer.image(at: url, maxPixelSize: Int(longestSide.rounded(.up)))
         imageLayer.isHidden = false
+        contentIsReady()
+    }
+
+    func showWeb(_ project: WebProject) {
+        clear()
+        let webView = WebWallpaperView(frame: bounds)
+        webView.hearsSound = true
+        addSubview(webView)
+        self.webView = webView
+        webView.setAudio(muted: isMuted, volume: volume)
+        webView.setPlaying(isPlaying, rate: rate)
+        webView.onReady = { [weak self] in self?.contentIsReady() }
+        webView.show(project)
+    }
+
+    private func contentIsReady() {
+        guard !isReady else { return }
+        isReady = true
+        firstFrame = nil
+        onReady?()
     }
 
     func clear() {
+        isReady = false
+        firstFrame = nil
+        webView?.unload()
+        webView?.removeFromSuperview()
+        webView = nil
         loadTask?.cancel()
         loadTask = nil
         videoURL = nil
@@ -110,11 +146,13 @@ final class WallpaperView: NSView {
         isPlaying = playing
         self.rate = rate
         applyPlayback()
+        webView?.setPlaying(playing, rate: rate)
     }
 
     func setAudio(muted: Bool, volume: Float) {
         isMuted = muted
         self.volume = volume
+        webView?.setAudio(muted: muted, volume: volume)
         if videoHasAudio, playerHasAudio == muted {
             // Silent and audible playback use different players, see loadPlayer().
             loadPlayer()

@@ -60,6 +60,8 @@
 	<string>13.0</string>
 	<key>LSUIElement</key>
 	<true/>
+	<key>NSAudioCaptureUsageDescription</key>
+	<string>This lets wallpapers with an equalizer move to the sound your Mac is playing. Nothing is recorded or sent anywhere.</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
 	<key>NSPrincipalClass</key>

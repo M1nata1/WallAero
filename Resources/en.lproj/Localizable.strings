@@ -1,1 +1,18 @@
-/* English is the development language: the keys in the source code are the English texts. */
+/* English is the development language: the keys in the source code are the English texts.
+   The few keys below are names rather than texts, because the same English word needs
+   different translations in different places. */
+"blend.normal" = "Normal";
+"blend.multiply" = "Multiply";
+"blend.screen" = "Screen";
+"blend.overlay" = "Overlay";
+"blend.soft-light" = "Soft Light";
+"blend.hard-light" = "Hard Light";
+"blend.color-dodge" = "Color Dodge";
+"blend.difference" = "Difference";
+"blend.plus-lighter" = "Plus Lighter";
+"animation.none" = "None";
+"animation.pulse" = "Pulse";
+"animation.float" = "Float";
+"animation.spin" = "Spin";
+"animation.blink" = "Blink";
+"seconds.short" = "s";

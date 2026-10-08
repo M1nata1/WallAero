@@ -1,0 +1,2 @@
+/* Shown by macOS when the app first asks to listen to the Mac's sound. */
+"NSAudioCaptureUsageDescription" = "This lets wallpapers with an equalizer move to the sound your Mac is playing. Nothing is recorded or sent anywhere.";
