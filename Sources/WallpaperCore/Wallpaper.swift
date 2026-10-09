@@ -34,6 +34,8 @@ public struct Wallpaper: Codable, Identifiable, Hashable, Sendable {
     public var dateAdded: Date
     /// How this wallpaper is shown, once that has been set; `shownSettings` is what to go by.
     public var settings: Settings?
+    /// The tags the user gave it, once there are any; `tagList` is what to go by.
+    public var tags: [String]?
 
     /// What every wallpaper lets be set: how it fills the screen and how fast it plays.
     public struct Settings: Codable, Hashable, Sendable {
@@ -62,6 +64,21 @@ public struct Wallpaper: Codable, Identifiable, Hashable, Sendable {
     /// The settings to show the wallpaper with: its own, or the usual ones until it has any.
     public var shownSettings: Settings { settings ?? Settings() }
 
+    public var tagList: [String] { tags ?? [] }
+
+    /// Whether a search for `text` among the wallpapers the ticked tags leave finds this one.
+    /// The tags come in groups, one per category: a wallpaper stays if it has a tag from every
+    /// group, any one of that group's. The text is looked for in the name and in the tags,
+    /// whatever the case; no text finds them all.
+    public func matches(search text: String, tagGroups: [Set<String>] = []) -> Bool {
+        let own = Set(tagList.map { $0.lowercased() })
+        for group in tagGroups where !group.isEmpty {
+            guard group.contains(where: { own.contains($0.lowercased()) }) else { return false }
+        }
+        let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return text.isEmpty || name.localizedStandardContains(text) || tagList.contains { $0.localizedStandardContains(text) }
+    }
+
     public init(
         id: UUID,
         name: String,
@@ -76,7 +93,8 @@ public struct Wallpaper: Codable, Identifiable, Hashable, Sendable {
         hasAudio: Bool,
         fileSize: Int64,
         dateAdded: Date = Date(),
-        settings: Settings? = nil
+        settings: Settings? = nil,
+        tags: [String]? = nil
     ) {
         self.id = id
         self.name = name
@@ -92,5 +110,6 @@ public struct Wallpaper: Codable, Identifiable, Hashable, Sendable {
         self.fileSize = fileSize
         self.dateAdded = dateAdded
         self.settings = settings
+        self.tags = tags
     }
 }

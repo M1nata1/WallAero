@@ -252,3 +252,16 @@
 "Properties" = "Свойства";
 "Scene" = "Сцена";
 "Web Page" = "Веб-страница";
+
+/* Search and tags */
+"Tags" = "Теги";
+"Tag" = "Тег";
+"New Tag" = "Новый тег";
+"New Tag…" = "Новый тег…";
+"Remove Tag" = "Убрать тег";
+"Category" = "Категория";
+"No Category" = "Без категории";
+"New Category" = "Новая категория";
+"New Category…" = "Новая категория…";
+"Find" = "Найти";
+"Nothing Found" = "Ничего не найдено";

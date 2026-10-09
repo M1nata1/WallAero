@@ -242,6 +242,88 @@ final class WallpaperLibraryTests: XCTestCase {
         XCTAssertEqual(item.name, "Old")
         XCTAssertNil(item.settings)
         XCTAssertEqual(item.shownSettings.speed, 1)
+        XCTAssertEqual(item.tagList, [])
+    }
+
+    func testTagsAreTidiedKeptAndListed() async throws {
+        let folder = root.appendingPathComponent("Library")
+        let library = WallpaperLibrary(rootURL: folder)
+        let first = try await library.importFile(at: TestMedia.pngFile(in: root))
+        let second = try await library.importFile(at: TestMedia.pngFile(in: root))
+        XCTAssertNil(first.tags)
+        XCTAssertTrue(library.allTags.isEmpty)
+
+        library.setTags(["  Night ", "", "anime", "night"], for: first.id)
+        XCTAssertEqual(library.item(withID: first.id)?.tagList, ["Night", "anime"])
+        // The spelling in use wins, so one tag is not two filters.
+        library.setTags(["ANIME", "City"], for: second.id)
+        XCTAssertEqual(library.item(withID: second.id)?.tagList, ["anime", "City"])
+        XCTAssertEqual(library.allTags, ["anime", "City", "Night"])
+
+        let reopened = WallpaperLibrary(rootURL: folder)
+        XCTAssertEqual(reopened.item(withID: first.id)?.tagList, ["Night", "anime"])
+        reopened.setTags([], for: first.id)
+        XCTAssertNil(reopened.item(withID: first.id)?.tags)
+        XCTAssertEqual(reopened.allTags, ["anime", "City"])
+    }
+
+    func testTagsAreGroupedByTheirCategories() async throws {
+        let folder = root.appendingPathComponent("Library")
+        let library = WallpaperLibrary(rootURL: folder)
+        let first = try await library.importFile(at: TestMedia.pngFile(in: root))
+        let second = try await library.importFile(at: TestMedia.pngFile(in: root))
+        library.setTags(["Anime", "Calm", "4K"], for: first.id)
+        library.setTags(["Nature"], for: second.id)
+        XCTAssertEqual(library.tagGroups, [TagGroup(category: nil, tags: ["4K", "Anime", "Calm", "Nature"])])
+
+        library.setCategory(" Genre ", ofTag: "Anime")
+        library.setCategory("genre", ofTag: "nature")
+        library.setCategory("Mood", ofTag: "Calm")
+        XCTAssertEqual(library.category(of: "ANIME"), "Genre")
+        XCTAssertEqual(library.allCategories, ["Genre", "Mood"])
+        XCTAssertEqual(library.tagGroups, [
+            TagGroup(category: "Genre", tags: ["Anime", "Nature"]),
+            TagGroup(category: "Mood", tags: ["Calm"]),
+            TagGroup(category: nil, tags: ["4K"]),
+        ])
+
+        // The categories are kept apart from the wallpapers, in a file of their own.
+        let reopened = WallpaperLibrary(rootURL: folder)
+        XCTAssertEqual(reopened.category(of: "Nature"), "Genre")
+        reopened.setCategory(nil, ofTag: "Calm")
+        XCTAssertEqual(WallpaperLibrary(rootURL: folder).allCategories, ["Genre"])
+        // A category lives as long as a wallpaper has one of its tags.
+        reopened.setTags([], for: first.id)
+        reopened.setTags([], for: second.id)
+        XCTAssertTrue(reopened.tagGroups.isEmpty)
+    }
+
+    func testSearchLooksInNamesAndTagsAndTheFilterTakesAnyTagOfEachGroup() {
+        func wallpaper(_ name: String, _ tags: [String]?) -> Wallpaper {
+            Wallpaper(id: UUID(), name: name, kind: .video, fileName: "a.mp4", thumbnailFileName: nil, sourceFormat: "MP4",
+                      wasConverted: false, pixelWidth: 1920, pixelHeight: 1080, duration: 5, hasAudio: false, fileSize: 1, tags: tags)
+        }
+        let lake = wallpaper("Japan Lake", ["Nature", "Night"])
+        let frogs = wallpaper("Лягушки", ["Nature"])
+        let plain = wallpaper("Steins Gate", nil)
+
+        XCTAssertTrue(plain.matches(search: ""))
+        XCTAssertTrue(plain.matches(search: "  "))
+        XCTAssertTrue(lake.matches(search: "lake"))
+        XCTAssertTrue(frogs.matches(search: "лягуш"))
+        XCTAssertFalse(frogs.matches(search: "lake"))
+        // A tag is found by the search as well as a name.
+        XCTAssertTrue(frogs.matches(search: "natu"))
+        XCTAssertFalse(plain.matches(search: "natu"))
+
+        // Ticked tags of one category: any of them will do.
+        XCTAssertTrue(frogs.matches(search: "", tagGroups: [["nature", "Anime"]]))
+        XCTAssertFalse(plain.matches(search: "", tagGroups: [["Nature", "Anime"]]))
+        // Tags of two categories: one of each is needed.
+        XCTAssertTrue(lake.matches(search: "", tagGroups: [["Nature"], ["Night", "Day"]]))
+        XCTAssertFalse(frogs.matches(search: "", tagGroups: [["Nature"], ["Night", "Day"]]))
+        XCTAssertTrue(plain.matches(search: "", tagGroups: [[]]))
+        XCTAssertFalse(lake.matches(search: "frog", tagGroups: [["Nature"]]))
     }
 
     func testLibraryIsPersistedRenamedAndCleanedUp() async throws {

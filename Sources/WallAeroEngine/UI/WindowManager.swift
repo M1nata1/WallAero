@@ -21,6 +21,12 @@ final class MainWindowState: ObservableObject {
 
     /// The wallpaper selected in the library.
     @Published var selection: UUID?
+    /// What the search field holds, and the tags ticked in the list next to it. Neither
+    /// outlives the window.
+    @Published var searchText = ""
+    @Published var selectedTags: Set<String> = []
+    /// Whether the list of tags to tick is dropped down.
+    @Published var showsTagFilter = false
     @Published var showsSettings: Bool {
         didSet { defaults?.set(showsSettings, forKey: Self.showsSettingsKey) }
     }
@@ -101,6 +107,17 @@ final class WindowManager: NSObject, NSWindowDelegate {
         state.showsSettings = true
     }
 
+    /// Opens the main window with the cursor in its search field.
+    func showSearch() {
+        showLibrary()
+        func searchField(in view: NSView) -> NSSearchField? {
+            (view as? NSSearchField) ?? view.subviews.lazy.compactMap(searchField(in:)).first
+        }
+        if let window = libraryWindow, let field = window.contentView.flatMap(searchField(in:)) {
+            window.makeFirstResponder(field)
+        }
+    }
+
     func activateApp() {
         if NSApp.activationPolicy() != .regular {
             NSApp.setActivationPolicy(.regular)
@@ -136,7 +153,13 @@ final class WindowManager: NSObject, NSWindowDelegate {
         // at the position saved under its autosave name.
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
-            if closing === self.libraryWindow { self.libraryWindow = nil }
+            if closing === self.libraryWindow {
+                self.libraryWindow = nil
+                // The window opens on the whole library next time, not on what was searched for.
+                self.state.searchText = ""
+                self.state.selectedTags = []
+                self.state.showsTagFilter = false
+            }
             if let id = self.editors.first(where: { $0.value.window === closing })?.key {
                 self.editors[id] = nil
             }

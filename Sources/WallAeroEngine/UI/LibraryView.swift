@@ -85,6 +85,8 @@ struct LibraryView: View {
     @State private var renamingItem: Wallpaper?
     @State private var newName = ""
     @State private var deletingItem: Wallpaper?
+    @State private var taggingItem: Wallpaper?
+    @State private var newTag = ""
 
     /// Kept in the window's state: the settings at the side are for the selected wallpaper.
     private var selection: UUID? {
@@ -93,6 +95,12 @@ struct LibraryView: View {
     }
 
     private var selectedItem: Wallpaper? { selection.flatMap(library.item(withID:)) }
+    /// The wallpapers the search and the ticked tags leave.
+    private var shownItems: [Wallpaper] {
+        // The ticked tags by category: within one any will do, between them each counts.
+        let groups = Dictionary(grouping: state.selectedTags) { library.category(of: $0) ?? "" }.values.map(Set.init)
+        return library.items.filter { $0.matches(search: state.searchText, tagGroups: groups) }
+    }
     private var currentID: UUID? { manager.wallpaperID(for: target) }
 
     var body: some View {
@@ -108,11 +116,24 @@ struct LibraryView: View {
                     target = .all
                 }
             }
+            .onChange(of: library.allTags) { tags in
+                // A tag taken off its last wallpaper is gone from the list, and from the filter.
+                state.selectedTags.formIntersection(tags)
+            }
             .alert("Rename Wallpaper", isPresented: isRenaming) {
                 TextField("Name", text: $newName)
                 Button("Rename") {
                     if let item = renamingItem {
                         library.rename(item.id, to: newName)
+                    }
+                }
+                Button("Cancel", role: .cancel) {}
+            }
+            .alert("New Tag", isPresented: isTagging) {
+                TextField("Tag", text: $newTag)
+                Button("Add") {
+                    if let item = taggingItem.flatMap({ library.item(withID: $0.id) }) {
+                        library.setTags(item.tagList + [newTag], for: item.id)
                     }
                 }
                 Button("Cancel", role: .cancel) {}
@@ -135,7 +156,7 @@ struct LibraryView: View {
     @ViewBuilder
     private var layout: some View {
         if #available(macOS 14.0, *) {
-            droppable
+            filterable
                 .bottomBar { footer }
                 .toolbar {
                     if manager.displays.count > 1 {
@@ -150,10 +171,18 @@ struct LibraryView: View {
             VStack(spacing: 0) {
                 header
                 Divider()
-                droppable
+                filterable
                 Divider()
                 footer
             }
+        }
+    }
+
+    /// The wallpapers under the row that searches and filters them.
+    private var filterable: some View {
+        droppable.topBar {
+            LibraryFilterBar(searchText: $state.searchText, groups: library.tagGroups,
+                             selection: $state.selectedTags, showsTags: $state.showsTagFilter)
         }
     }
 
@@ -227,11 +256,13 @@ struct LibraryView: View {
     private var content: some View {
         if library.items.isEmpty {
             EmptyLibraryView(addFiles: actions.addFiles)
+        } else if shownItems.isEmpty {
+            NothingFoundView(searchText: state.searchText)
         } else {
             ScrollView {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: Self.tileWidth, maximum: Self.tileWidth), spacing: 16)],
                           alignment: .leading, spacing: 20) {
-                    ForEach(library.items) { item in
+                    ForEach(shownItems) { item in
                         WallpaperTile(
                             item: item,
                             thumbnailURL: library.thumbnailURL(for: item),
@@ -267,6 +298,29 @@ struct LibraryView: View {
         Button("Rename…") {
             newName = item.name
             renamingItem = item
+        }
+        Menu("Tags") {
+            let groups = library.tagGroups
+            ForEach(groups) { group in
+                Section {
+                    ForEach(group.tags, id: \.self) { tag in
+                        Toggle(isOn: hasTag(tag, item)) {
+                            Text(verbatim: tag)
+                        }
+                    }
+                } header: {
+                    if groups.namesCategories {
+                        group.title
+                    }
+                }
+            }
+            if !groups.isEmpty {
+                Divider()
+            }
+            Button("New Tag…") {
+                newTag = ""
+                taggingItem = item
+            }
         }
         Button("Show in Finder") {
             NSWorkspace.shared.activateFileViewerSelecting([library.fileURL(for: item)])
@@ -341,6 +395,21 @@ struct LibraryView: View {
 
     private var isRenaming: Binding<Bool> {
         Binding(get: { renamingItem != nil }, set: { if !$0 { renamingItem = nil } })
+    }
+
+    private var isTagging: Binding<Bool> {
+        Binding(get: { taggingItem != nil }, set: { if !$0 { taggingItem = nil } })
+    }
+
+    /// Whether a wallpaper has a tag; setting it gives the tag or takes it off.
+    private func hasTag(_ tag: String, _ item: Wallpaper) -> Binding<Bool> {
+        Binding(
+            get: { library.item(withID: item.id)?.tagList.contains(tag) ?? false },
+            set: { isOn in
+                let tags = library.item(withID: item.id)?.tagList ?? []
+                library.setTags(isOn ? tags + [tag] : tags.filter { $0 != tag }, for: item.id)
+            }
+        )
     }
 
     private var isDeleting: Binding<Bool> {
@@ -469,6 +538,25 @@ struct EmptyLibraryView: View {
                 .strokeBorder(Color.secondary.opacity(0.35), style: StrokeStyle(lineWidth: 2, dash: [8, 6]))
                 .padding(20)
         }
+    }
+}
+
+/// Shown in place of the wallpapers when the search and the ticked tags leave none.
+struct NothingFoundView: View {
+    let searchText: String
+
+    var body: some View {
+        Group {
+            if #available(macOS 14.0, *) {
+                // The system's own words for it, naming what was typed if anything was.
+                ContentUnavailableView.search(text: searchText.trimmingCharacters(in: .whitespacesAndNewlines))
+            } else {
+                Text("Nothing Found")
+                    .font(.title2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 

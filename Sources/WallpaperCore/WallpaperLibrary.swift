@@ -6,13 +6,30 @@ import Foundation
 ///
 ///     WallAeroEngine/
 ///       library.json   – the list of entries
+///       tags.json      – which category each tag is in
 ///       Media/         – imported videos and pictures (animated images converted to .mov)
 ///       Thumbnails/    – small JPEG previews for the library window
 ///       Stills/        – full-size first frames, used as the regular macOS wallpaper
 ///       Web/           – one folder per web wallpaper: scenes and imported pages
+/// The tags of one category, for a list that groups them.
+public struct TagGroup: Identifiable, Hashable, Sendable {
+    /// nil for the tags that were given no category.
+    public let category: String?
+    public let tags: [String]
+
+    public var id: String { category ?? "" }
+
+    public init(category: String?, tags: [String]) {
+        self.category = category
+        self.tags = tags
+    }
+}
+
 @MainActor
 public final class WallpaperLibrary: ObservableObject {
     @Published public private(set) var items: [Wallpaper] = []
+    /// The category of each tag that was given one, by the tag in lower case.
+    @Published public private(set) var tagCategories: [String: String] = [:]
 
     public let rootURL: URL
     public let mediaURL: URL
@@ -20,6 +37,7 @@ public final class WallpaperLibrary: ObservableObject {
     public let stillsURL: URL
     public let webURL: URL
     private let indexURL: URL
+    private let tagsURL: URL
 
     public nonisolated static var defaultRootURL: URL {
         let applicationSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -39,6 +57,7 @@ public final class WallpaperLibrary: ObservableObject {
         stillsURL = rootURL.appendingPathComponent("Stills", isDirectory: true)
         webURL = rootURL.appendingPathComponent("Web", isDirectory: true)
         indexURL = rootURL.appendingPathComponent("library.json")
+        tagsURL = rootURL.appendingPathComponent("tags.json")
         for directory in [mediaURL, thumbnailsURL, stillsURL, webURL] {
             try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         }
@@ -260,6 +279,66 @@ public final class WallpaperLibrary: ObservableObject {
         }
     }
 
+    /// Every tag the wallpapers have, in alphabetical order.
+    public var allTags: [String] {
+        var seen: Set<String> = []
+        return items.flatMap(\.tagList)
+            .filter { seen.insert($0.lowercased()).inserted }
+            .sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+    }
+
+    /// Gives a wallpaper its tags, in the order they come. Each is trimmed, and empty ones and
+    /// repeats are left out. A tag that differs from one in use only in case takes that one's
+    /// spelling, so "Anime" and "anime" do not become two filters.
+    public func setTags(_ tags: [String], for id: UUID) {
+        guard let index = items.firstIndex(where: { $0.id == id }) else { return }
+        let inUse = items.filter { $0.id != id }.flatMap(\.tagList)
+        var seen: Set<String> = []
+        let cleaned = tags
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty && seen.insert($0.lowercased()).inserted }
+            .map { tag in inUse.first { $0.caseInsensitiveCompare(tag) == .orderedSame } ?? tag }
+        guard cleaned != items[index].tagList else { return }
+        items[index].tags = cleaned.isEmpty ? nil : cleaned
+        save()
+    }
+
+    public func category(of tag: String) -> String? {
+        tagCategories[tag.lowercased()]
+    }
+
+    /// The categories the library's tags are in, in alphabetical order.
+    public var allCategories: [String] {
+        Set(allTags.compactMap(category(of:))).sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+    }
+
+    /// The library's tags by category, the ones without a category last.
+    public var tagGroups: [TagGroup] {
+        let tags = allTags
+        var groups = allCategories.map { category in
+            TagGroup(category: category, tags: tags.filter { self.category(of: $0) == category })
+        }
+        let loose = tags.filter { category(of: $0) == nil }
+        if !loose.isEmpty {
+            groups.append(TagGroup(category: nil, tags: loose))
+        }
+        return groups
+    }
+
+    /// Puts a tag into a category, on every wallpaper that has the tag, or takes it out of its
+    /// category with nil. A category that differs from one in use only in case takes that one's
+    /// spelling.
+    public func setCategory(_ category: String?, ofTag tag: String) {
+        let trimmed = category?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let named = trimmed.isEmpty ? nil : allCategories.first { $0.caseInsensitiveCompare(trimmed) == .orderedSame } ?? trimmed
+        guard tagCategories[tag.lowercased()] != named else { return }
+        tagCategories[tag.lowercased()] = named
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        guard let data = try? encoder.encode(tagCategories) else { return }
+        try? data.write(to: tagsURL, options: .atomic)
+    }
+
     public func rename(_ id: UUID, to name: String) {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, let index = items.firstIndex(where: { $0.id == id }) else { return }
@@ -294,6 +373,9 @@ public final class WallpaperLibrary: ObservableObject {
         guard let stored = try? decoder.decode([Wallpaper].self, from: data) else { return }
         // Entries whose media file disappeared (deleted by hand) are dropped.
         items = stored.filter { FileManager.default.fileExists(atPath: fileURL(for: $0).path) }
+        if let data = try? Data(contentsOf: tagsURL), let categories = try? JSONDecoder().decode([String: String].self, from: data) {
+            tagCategories = categories
+        }
     }
 
     private func save() {

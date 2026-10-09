@@ -51,6 +51,28 @@ extension View {
         }
     }
 
+    /// Puts a bar above the view, right under the window's toolbar.
+    @ViewBuilder
+    func topBar<Bar: View>(@ViewBuilder _ bar: () -> Bar) -> some View {
+        #if compiler(>=6.2)
+        if #available(macOS 26.0, *) {
+            safeAreaBar(edge: .top, spacing: 0) { bar() }
+        } else {
+            linedTopBar(bar)
+        }
+        #else
+        linedTopBar(bar)
+        #endif
+    }
+
+    private func linedTopBar<Bar: View>(@ViewBuilder _ bar: () -> Bar) -> some View {
+        VStack(spacing: 0) {
+            bar()
+            Divider()
+            self
+        }
+    }
+
     /// The style of a button in such a bar: glass since macOS 26, tinted for the main action.
     @ViewBuilder
     func barButtonStyle(isMainAction: Bool = false) -> some View {
@@ -67,6 +89,32 @@ extension View {
         #else
         self
         #endif
+    }
+}
+
+extension View {
+    /// The style of a button that shows something is on, like Tags while tags are ticked:
+    /// tinted then, and glass since macOS 26, as it stands in a bar there.
+    @ViewBuilder
+    func pressedButtonStyle(_ isPressed: Bool) -> some View {
+        #if compiler(>=6.2)
+        if #available(macOS 26.0, *) {
+            barButtonStyle(isMainAction: isPressed)
+        } else {
+            borderedButtonStyle(isProminent: isPressed)
+        }
+        #else
+        borderedButtonStyle(isProminent: isPressed)
+        #endif
+    }
+
+    @ViewBuilder
+    private func borderedButtonStyle(isProminent: Bool) -> some View {
+        if isProminent {
+            buttonStyle(.borderedProminent)
+        } else {
+            buttonStyle(.bordered)
+        }
     }
 }
 

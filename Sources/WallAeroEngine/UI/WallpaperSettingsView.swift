@@ -28,6 +28,9 @@ struct WallpaperSettingsView: View {
                     Section {
                         summary(of: item)
                     }
+                    Section("Tags") {
+                        TagEditor(item: item)
+                    }
                     Section("Properties") {
                         properties(of: item)
                     }

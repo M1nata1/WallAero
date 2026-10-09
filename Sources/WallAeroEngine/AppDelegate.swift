@@ -151,6 +151,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         windows.showSettings()
     }
 
+    @objc func showSearch(_ sender: Any?) {
+        windows.showSearch()
+    }
+
     /// Opens a wallpaper in the scene editor. A video or a picture first becomes a scene with
     /// itself as the background; the original stays in the library as it is.
     func edit(_ item: Wallpaper) {
@@ -271,6 +275,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .setSymbol("plus")
         fileMenu.addItem(withTitle: NSLocalizedString("Open Library…", comment: "Menu item"), action: #selector(showLibrary(_:)), keyEquivalent: "l")
             .setSymbol("square.grid.2x2")
+        fileMenu.addItem(withTitle: NSLocalizedString("Find", comment: "Menu item"), action: #selector(showSearch(_:)), keyEquivalent: "f")
+            .setSymbol("magnifyingglass")
         fileMenu.addItem(.separator())
         fileMenu.addItem(withTitle: NSLocalizedString("Close Window", comment: "Menu item"), action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
 

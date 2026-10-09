@@ -19,6 +19,7 @@ Live wallpapers for macOS: videos, GIFs and pictures on your desktop — beneath
 - **Your own music:** listen to your own songs in place of the video's sound. Pick a folder in Settings: its subfolders and `.m3u` files become playlists. With no folder chosen, the sound comes from the video. See [Music](#music).
 - **Cursors:** Windows cursor packs (`.ani`, `.cur`) replace the pointer across the whole system, animation included. Which file becomes which pointer is read from the pack's `install.inf`. See [Cursors](#cursors).
 - **Controls:** a menu bar icon (pause, next wallpaper, quick pick), a library window with drag and drop, and Open With → WallAero Engine in Finder.
+- **Search and tags:** find a wallpaper by its name, give wallpapers tags of your own, sort the tags into categories and tick the ones the library should show.
 - **Settings of every wallpaper:** scaling (fill / fit / stretch), which part stays in view when filling crops the picture, and speed. A scene adds the settings its author put up for changing.
 - **Settings of the app:** sound and volume, open at login, and the first frame as the regular macOS wallpaper (shown on the lock screen and in Mission Control).
 - **Interface language:** English or Russian, following the system language; any other language gets English. To change it for WallAero Engine alone, go to System Settings → General → Language & Region → Applications.
@@ -65,6 +66,10 @@ The app is signed ad hoc, so a copy built on your own Mac opens right away, with
 1. Launch WallAero Engine — the first time, it opens an empty library.
 2. Drag files or folders into the window, or click + in the toolbar.
 3. Double-click a wallpaper (or click Set as Wallpaper), and it is on your desktop.
+
+Above the wallpapers there is a search field and the Tags button. The search looks in names and tags; ⌘F puts the cursor into it. Tags drops down the library's tags, each with a checkbox, under the names of their categories. Tick tags of one category and the wallpapers that have any of them stay; tick tags of several categories and a wallpaper needs one from each.
+
+A wallpaper gets its tags in its settings, under Tags: type one and press Return, or pick one other wallpapers already have. Click a tag there to put it into a category or to make a new one; the category goes with the tag on every wallpaper. Tags are in a wallpaper's context menu as well.
 
 The settings are at the side of the same window; the gear button hides and shows them, and ⌘, opens the app's own. They have two tabs. Wallpaper is about the wallpaper selected in the library: its preview, the button that opens it in the editor, its scaling, position and speed, and the [variables](#scenes) of a scene. General holds the app's own settings. Everything else is in the menu bar icon. While its windows are closed, the app takes no space in the Dock.
 

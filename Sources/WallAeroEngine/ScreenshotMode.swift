@@ -50,6 +50,12 @@ enum ScreenshotMode {
             state.selection = library.items[number - 1].id
         }
         let secondTab = values(of: "--settings-tab").last.flatMap(MainWindowState.SettingsTab.init(rawValue:)) ?? .general
+        // `--search <text>` and `--tag <name>`, which may be given several times, show the
+        // library as it is with that typed into the search field and those tags ticked.
+        state.searchText = values(of: "--search").last ?? ""
+        state.selectedTags = Set(values(of: "--tag"))
+        // `--show-tags` drops the list of tags down for the first picture.
+        let showsTags = CommandLine.arguments.contains("--show-tags")
         let mainView = MainView(actions: LibraryActions(addFiles: {}))
             .environmentObject(library)
             .environmentObject(manager)
@@ -77,7 +83,10 @@ enum ScreenshotMode {
             state.showsSettings = true
             state.settingsTab = .wallpaper
             await shoot(AnyView(mainView), title: "WallAero Engine", size: NSSize(width: 1180, height: 700),
-                        to: directory.appendingPathComponent("library.png"))
+                        to: directory.appendingPathComponent("library.png")) { _ in
+                state.showsTagFilter = showsTags
+            }
+            state.showsTagFilter = false
             state.settingsTab = secondTab
             await shoot(AnyView(mainView), title: "WallAero Engine", size: NSSize(width: 1180, height: 760),
                         to: directory.appendingPathComponent("settings.png")) { window in
@@ -117,7 +126,7 @@ enum ScreenshotMode {
     /// `--toggle-settings`, with `--screenshots`: opens the main window the way the app does,
     /// narrow and without the settings, then shows them at its side and hides them again as the
     /// button in the toolbar would. It takes a picture each time (`toggle-1.png`, …) and prints
-    /// how wide the window is and how narrow it may get.
+    /// how wide the window is and how narrow it may get, and whether Find reaches the search field.
     private static func toggleSettings(_ content: AnyView, state: MainWindowState, in directory: URL) async {
         state.showsSettings = false
         let windows = WindowManager(state: state, remembersFrames: false, main: { content })
@@ -139,6 +148,10 @@ enum ScreenshotMode {
             }
             print("settings \(shown ? "shown" : "hidden"): the window is \(Int(window.frame.width)) wide, at least \(Int(window.contentMinSize.width))")
         }
+        // What the Find command does: the cursor goes to the search field.
+        windows.showSearch()
+        let editor = window.firstResponder as? NSTextView
+        print("Find puts the cursor in the search field: \(editor?.delegate is NSSearchField)")
         window.close()
     }
 
@@ -167,6 +180,16 @@ enum ScreenshotMode {
         try? await Task.sleep(nanoseconds: 1_000_000_000)
         prepare?(window)
         try? await Task.sleep(nanoseconds: 500_000_000)
+        // Whoever is at the Mac may have clicked elsewhere meanwhile: a window that is not
+        // the active one is drawn dimmed. Ask for it back a few times, then say so.
+        for _ in 0..<8 where !(NSApp.isActive && window.isKeyWindow) {
+            NSApp.activate(ignoringOtherApps: true)
+            window.makeKeyAndOrderFront(nil)
+            try? await Task.sleep(nanoseconds: 400_000_000)
+        }
+        if !(NSApp.isActive && window.isKeyWindow) {
+            print("the window was not the active one; \(url.lastPathComponent) shows it dimmed")
+        }
 
         var image: CGImage?
         if #available(macOS 14.4, *) {
