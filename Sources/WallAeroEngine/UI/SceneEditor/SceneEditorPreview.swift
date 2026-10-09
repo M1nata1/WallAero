@@ -8,11 +8,12 @@ import WallpaperCore
 final class SceneEditorPreviewController {
     let view: WebWallpaperView
     private weak var model: SceneEditorModel?
+    private var colorsObserver: NSObjectProtocol?
 
     init(model: SceneEditorModel) {
         self.model = model
         view = WebWallpaperView(frame: NSRect(x: 0, y: 0, width: 800, height: 500))
-        view.editorScript = SceneEditorScript.source
+        view.editorScript = Self.editorScript
         view.hearsSound = true
         view.onSceneFileChange = { [weak model] in
             model?.sceneFileDidChange()
@@ -26,6 +27,29 @@ final class SceneEditorPreviewController {
             view.show(project)
         }
         model.preview = self
+        // The selection in the preview is drawn by the page, so the page is told the Mac's
+        // accent color, again whenever the user picks another one.
+        colorsObserver = NotificationCenter.default.addObserver(forName: NSColor.systemColorsDidChangeNotification,
+                                                                object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor in self?.showAccentColor() }
+        }
+    }
+
+    deinit {
+        if let colorsObserver {
+            NotificationCenter.default.removeObserver(colorsObserver)
+        }
+    }
+
+    /// The editor script, ending with the accent color as it is now.
+    private static var editorScript: String {
+        SceneEditorScript.source + "\nwindow.wallaeroEditor.setAccent('\(NSColor.controlAccentColor.cssHex)');"
+    }
+
+    private func showAccentColor() {
+        // For the page as it is, and for when it loads anew.
+        view.editorScript = Self.editorScript
+        view.evaluate("window.wallaeroEditor && window.wallaeroEditor.setAccent('\(NSColor.controlAccentColor.cssHex)')")
     }
 
     func show(_ scene: WallpaperScene) {

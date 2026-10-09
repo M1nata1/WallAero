@@ -1,10 +1,12 @@
 import AppKit
+import AVFoundation
 import ScreenCaptureKit
 import SwiftUI
 import UniformTypeIdentifiers
 import WallpaperCore
 
-/// Renders the library and settings windows to PNG files for the README (`scripts/screenshots.sh`):
+/// Renders the main window to PNG files for the README (`scripts/screenshots.sh`): as it opens,
+/// with the settings of a wallpaper at its side, and with the app's own settings there:
 ///
 ///     "build/WallAero Engine.app/Contents/MacOS/WallAeroEngine" --screenshots docs/screenshots
 ///
@@ -20,6 +22,12 @@ enum ScreenshotMode {
         return URL(fileURLWithPath: arguments[index + 1], isDirectory: true)
     }
 
+    /// `--library <folder>`, with `--screenshots`: the library to picture instead of the user's.
+    static var libraryFolder: URL? {
+        guard outputDirectory != nil else { return nil }
+        return values(of: "--library").last.map { URL(fileURLWithPath: $0, isDirectory: true) }
+    }
+
     static func run(
         to directory: URL,
         library: WallpaperLibrary,
@@ -29,32 +37,100 @@ enum ScreenshotMode {
         cursorSettings: CursorSettings
     ) {
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        applyRequestedAppearance()
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
 
-        let libraryView = LibraryView(actions: LibraryActions(addFiles: {}, openSettings: {}))
+        // The first picture shows the settings of a wallpaper: the first of the library, or the
+        // one `--select-wallpaper <number>` names. The second shows the app's own settings, or
+        // the wallpaper's again with `--settings-tab wallpaper`.
+        let state = MainWindowState(defaults: nil)
+        let number = values(of: "--select-wallpaper").last.flatMap(Int.init) ?? 1
+        if library.items.indices.contains(number - 1) {
+            state.selection = library.items[number - 1].id
+        }
+        let secondTab = values(of: "--settings-tab").last.flatMap(MainWindowState.SettingsTab.init(rawValue:)) ?? .general
+        let mainView = MainView(actions: LibraryActions(addFiles: {}, toggleSettings: {}))
             .environmentObject(library)
             .environmentObject(manager)
             .environmentObject(importer)
-        // Tall enough to show every section without scrolling.
-        let settingsHeight: CGFloat = 1025
-        let settingsView = SettingsView(height: settingsHeight)
             .environmentObject(preferences)
-            .environmentObject(library)
-            .environmentObject(manager)
             .environmentObject(cursorSettings)
+            .environmentObject(state)
 
+        // The second picture has the settings open, scrolled to their end, where the cursors are
+        // (`--settings-top` leaves them at the top, to check the first sections).
+        let showsEnd = !CommandLine.arguments.contains("--settings-top") && secondTab == .general
         Task {
             await manager.readMusicFolderForDisplay()
-            await shoot(AnyView(libraryView), title: "WallAero Engine", size: NSSize(width: 780, height: 440),
+            if let seconds = values(of: "--watch-theme").last.flatMap(Int.init) {
+                state.showsSettings = true
+                await watchTheme(AnyView(mainView), seconds: seconds, in: directory)
+                NSApp.terminate(nil)
+                return
+            }
+            state.showsSettings = true
+            state.settingsTab = .wallpaper
+            await shoot(AnyView(mainView), title: "WallAero Engine", size: NSSize(width: 1180, height: 700),
                         to: directory.appendingPathComponent("library.png"))
-            await shoot(AnyView(settingsView), title: NSLocalizedString("Settings", comment: "Window title"),
-                        size: NSSize(width: 500, height: settingsHeight), to: directory.appendingPathComponent("settings.png"))
+            state.settingsTab = secondTab
+            await shoot(AnyView(mainView), title: "WallAero Engine", size: NSSize(width: 1100, height: 760),
+                        to: directory.appendingPathComponent("settings.png")) { window in
+                if showsEnd {
+                    scrollSettingsToEnd(in: window)
+                }
+            }
             NSApp.terminate(nil)
         }
     }
 
-    private static func shoot(_ content: AnyView, title: String, size: NSSize, to url: URL) async {
+    /// `--watch-theme <seconds>`, with `--screenshots`: keeps the main window open with the
+    /// settings at its side and takes a picture of it every second (`theme-1.png`, …), to see
+    /// whether it follows the Mac's accent color and appearance when they change meanwhile.
+    private static func watchTheme(_ content: AnyView, seconds: Int, in directory: URL) async {
+        let size = NSSize(width: 1100, height: 520)
+        let window = NSWindow(contentRect: NSRect(origin: .zero, size: size), styleMask: [.titled, .closable],
+                              backing: .buffered, defer: false)
+        window.title = "WallAero Engine"
+        window.isReleasedWhenClosed = false
+        window.contentView = NSHostingView(rootView: content)
+        centerOnSharpestScreen(window)
+        window.makeKeyAndOrderFront(nil)
+        try? await Task.sleep(nanoseconds: 700_000_000)
+        if !CommandLine.arguments.contains("--settings-top") {
+            scrollSettingsToEnd(in: window)
+        }
+        for second in 1...max(1, seconds) {
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+            var image: CGImage?
+            if #available(macOS 14.4, *) {
+                image = try? await captureWithScreenCaptureKit(window)
+            }
+            if let image {
+                write(image, to: directory.appendingPathComponent("theme-\(second).png"))
+            }
+        }
+        window.close()
+    }
+
+    /// Scrolls whatever scrolls in the right half of the window, the settings, to its end.
+    private static func scrollSettingsToEnd(in window: NSWindow) {
+        guard let content = window.contentView else { return }
+        func scrollViews(in view: NSView) -> [NSScrollView] {
+            view.subviews.flatMap { subview in
+                (subview as? NSScrollView).map { [$0] } ?? scrollViews(in: subview)
+            }
+        }
+        for scrollView in scrollViews(in: content) where scrollView.convert(scrollView.bounds, to: nil).minX > content.bounds.midX {
+            guard let document = scrollView.documentView else { continue }
+            let end = max(0, document.frame.height - scrollView.contentView.bounds.height)
+            scrollView.contentView.scroll(to: NSPoint(x: 0, y: document.isFlipped ? end : 0))
+            scrollView.reflectScrolledClipView(scrollView.contentView)
+        }
+    }
+
+    private static func shoot(_ content: AnyView, title: String, size: NSSize, to url: URL,
+                              prepare: ((NSWindow) -> Void)? = nil) async {
         let window = NSWindow(
             contentRect: NSRect(origin: .zero, size: size),
             styleMask: [.titled, .closable, .miniaturizable],
@@ -67,7 +143,9 @@ enum ScreenshotMode {
         centerOnSharpestScreen(window)
         window.makeKeyAndOrderFront(nil)
         // Let SwiftUI lay out, thumbnails load and the window server draw a few frames.
-        try? await Task.sleep(nanoseconds: 1_500_000_000)
+        try? await Task.sleep(nanoseconds: 1_000_000_000)
+        prepare?(window)
+        try? await Task.sleep(nanoseconds: 500_000_000)
 
         var image: CGImage?
         if #available(macOS 14.4, *) {
@@ -100,6 +178,16 @@ enum ScreenshotMode {
         configuration.ignoreShadowsSingleWindow = true
         configuration.shouldBeOpaque = false
         return try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: configuration)
+    }
+
+    /// `--appearance light` or `--appearance dark` shows the helper's windows that way, whatever
+    /// the Mac is set to; without it they follow the system, as the app's own windows do.
+    private static func applyRequestedAppearance() {
+        switch values(of: "--appearance").last {
+        case "light": NSApp.appearance = NSAppearance(named: .aqua)
+        case "dark": NSApp.appearance = NSAppearance(named: .darkAqua)
+        default: break
+        }
     }
 
     private static func drawViews(of window: NSWindow) -> CGImage? {
@@ -180,7 +268,9 @@ enum ScreenshotMode {
         try? await Task.sleep(nanoseconds: 1_500_000_000)
         await report("paused, 2.5 s:")
         view.setPlaying(true, rate: 1)
-        try? await Task.sleep(nanoseconds: 1_200_000_000)
+        try? await Task.sleep(nanoseconds: 300_000_000)
+        await report("again, 0.3 s:")
+        try? await Task.sleep(nanoseconds: 900_000_000)
         await report("playing again:")
         view.setPlaying(true, rate: 2)
         view.setAudio(muted: false, volume: 0)
@@ -199,7 +289,8 @@ enum ScreenshotMode {
     /// for checking the editor from a script: `--select <layer number, front first>` selects a
     /// layer, `--eval <JavaScript>` runs in the preview first — to act as the mouse would —
     /// and `--add <kind>`, `--background-blur <number>` and `--undo <times>` change the scene the
-    /// way the editor's own controls do.
+    /// way the editor's own controls do. `--add-variable <kind>` adds a variable and
+    /// `--select-variable <number>` selects one.
     static var editRequest: (folder: URL, output: URL)? {
         let arguments = CommandLine.arguments
         guard let index = arguments.firstIndex(of: "--edit-scene"), index + 2 < arguments.count else { return nil }
@@ -212,6 +303,7 @@ enum ScreenshotMode {
     }
 
     static func editScene(_ request: (folder: URL, output: URL)) {
+        applyRequestedAppearance()
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
         guard let model = try? SceneEditorModel(folder: request.folder, title: request.folder.lastPathComponent) else {
@@ -246,8 +338,15 @@ enum ScreenshotMode {
             for _ in 0..<(values(of: "--undo").last.flatMap(Int.init) ?? 0) {
                 model.undo()
             }
+            for kind in values(of: "--add-variable").compactMap(WallpaperScene.Variable.Kind.init(rawValue:)) {
+                model.addVariable(kind)
+                try? await Task.sleep(nanoseconds: 200_000_000)
+            }
             if let number = values(of: "--select").last.flatMap(Int.init), model.layersFrontFirst.indices.contains(number - 1) {
                 model.selection = model.layersFrontFirst[number - 1].id
+            }
+            if let number = values(of: "--select-variable").last.flatMap(Int.init), model.scene.variables.indices.contains(number - 1) {
+                model.selection = model.scene.variables[number - 1].id
             }
             try? await Task.sleep(nanoseconds: 1_000_000_000)
 
@@ -270,6 +369,228 @@ enum ScreenshotMode {
         }
     }
 
+    /// A made-up sound: silence and a tone by turns, starting with silence and ending in it.
+    private final class SyntheticSound: SoundSource {
+        let sampleRate = 48_000.0
+        private let turns: [Double]
+        private var timer: DispatchSourceTimer?
+        private var frame = 0
+        private var sounded = false
+
+        /// - Parameter turns: how many seconds each turn lasts.
+        init(turns: [Double]) {
+            self.turns = turns
+        }
+
+        func start(on queue: DispatchQueue, handler: @escaping (UnsafePointer<AudioBufferList>) -> Void) throws {
+            let frames = 512 // what the Mac hands over at a time
+            var samples = [Float](repeating: 0, count: frames * 2)
+            // Strict, as sound itself is: it arrives on time whatever else the Mac is doing.
+            let timer = DispatchSource.makeTimerSource(flags: .strict, queue: queue)
+            timer.schedule(deadline: .now(), repeating: Double(frames) / sampleRate, leeway: .milliseconds(1))
+            timer.setEventHandler { [weak self] in
+                guard let self else { return }
+                let sounds = self.sounds(at: Double(self.frame) / self.sampleRate)
+                if sounds != self.sounded {
+                    self.sounded = sounds
+                    print(sounds ? "— the tone starts —" : "— the tone stops —")
+                }
+                for index in 0..<frames {
+                    let phase = 2 * Double.pi * 1000 * Double(self.frame + index) / self.sampleRate
+                    let value: Float = sounds ? 0.3 * Float(sin(phase)) : 0
+                    samples[index * 2] = value
+                    samples[index * 2 + 1] = value
+                }
+                self.frame += frames
+                samples.withUnsafeMutableBytes { bytes in
+                    var list = AudioBufferList(mNumberBuffers: 1, mBuffers: AudioBuffer(
+                        mNumberChannels: 2, mDataByteSize: UInt32(bytes.count), mData: bytes.baseAddress))
+                    handler(&list)
+                }
+            }
+            timer.resume()
+            self.timer = timer
+        }
+
+        func stop() {
+            timer?.cancel()
+            timer = nil
+        }
+
+        private func sounds(at time: Double) -> Bool {
+            var start = 0.0
+            for (index, length) in turns.enumerated() {
+                if time < start + length { return index % 2 == 1 }
+                start += length
+            }
+            return false
+        }
+    }
+
+    // MARK: - Energy
+
+    /// `--energy-test <video, picture or web wallpaper folder> [--seconds <n>] [--window <w> <h>]`
+    /// plays a wallpaper the way the desktop does, in a window nothing covers, so that what it
+    /// costs can be measured from outside (`top -stats pid,command,cpu,power`); the helper only
+    /// prints its process identifier and waits. A web wallpaper is told about sound as the app
+    /// would tell it, without listening to the Mac: `--sound music` hands it a moving spectrum
+    /// thirty times a second, `--sound silence` zeros four times a second, and without the
+    /// option it is told nothing, as when the reaction to sound is switched off. `--eval
+    /// <JavaScript>` runs in the page once it has loaded, and `--pause-after <seconds>` pauses
+    /// the wallpaper then, the way the app does when windows cover the desktop.
+    static var energyTestTarget: URL? {
+        values(of: "--energy-test").last.map { URL(fileURLWithPath: $0) }
+    }
+
+    static func energyTest(_ target: URL) {
+        NSApp.setActivationPolicy(.accessory)
+        var size = NSSize(width: 1280, height: 800)
+        let arguments = CommandLine.arguments
+        if let index = arguments.firstIndex(of: "--window"), index + 2 < arguments.count,
+           let width = Double(arguments[index + 1]), let height = Double(arguments[index + 2]) {
+            size = NSSize(width: width, height: height)
+        }
+        let seconds = values(of: "--seconds").last.flatMap(Double.init) ?? 20
+        let window = NSWindow(contentRect: NSRect(origin: NSPoint(x: 60, y: 60), size: size), styleMask: [.borderless],
+                              backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.level = .floating
+        // On every Space and over full-screen apps: a page that goes out of sight stops, and
+        // the measurement with it.
+        window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
+        window.backgroundColor = .black
+        let view = WallpaperView(frame: NSRect(origin: .zero, size: size))
+        window.contentView = view
+        view.setPlaying(true, rate: 1)
+        var isFolder: ObjCBool = false
+        FileManager.default.fileExists(atPath: target.path, isDirectory: &isFolder)
+        if isFolder.boolValue, let project = WebProject(folder: target) {
+            view.showWeb(project, hearsSound: false)
+        } else if UTType(filenameExtension: target.pathExtension)?.conforms(to: .image) == true {
+            view.showImage(at: target)
+        } else {
+            view.showVideo(at: target)
+        }
+        window.orderFrontRegardless()
+        print("pid \(ProcessInfo.processInfo.processIdentifier)")
+        fflush(stdout)
+        Task {
+            await view.webView?.waitUntilLoaded()
+            for script in values(of: "--eval") {
+                _ = await view.webView?.value(of: script)
+            }
+        }
+        if let pause = values(of: "--pause-after").last.flatMap(Double.init) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + pause) {
+                view.setPlaying(false, rate: 1)
+            }
+        }
+
+        // How many of the seconds the window was out of sight, covered or on another Space.
+        var hiddenSeconds = 0
+        let watch = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in
+            MainActor.assumeIsolated {
+                if !window.occlusionState.contains(.visible) { hiddenSeconds += 1 }
+            }
+        }
+        let sound = values(of: "--sound").last
+        let started = CFAbsoluteTimeGetCurrent()
+        var timer: Timer?
+        if sound == "music" || sound == "silence" {
+            timer = Timer.scheduledTimer(withTimeInterval: sound == "music" ? 1.0 / 30 : 0.25, repeats: true) { _ in
+                let time = CFAbsoluteTimeGetCurrent() - started
+                // Something like music: a beat in the low bands, slower waves across the rest.
+                var levels = [Float](repeating: 0, count: 128)
+                if sound == "music" {
+                    for index in levels.indices {
+                        let band = Double(index % 64) / 64
+                        let kick: Double = pow(max(0, sin(time * 4 * Double.pi)), 6)
+                        let beat: Double = kick * max(0, 1 - band * 3)
+                        let fast: Double = sin(time * (1.3 + band * 5) + band * 20)
+                        let slow: Double = sin(time * 0.7 + band * 9)
+                        let wave: Double = 0.35 + 0.3 * fast * slow
+                        let level: Double = wave * (1 - band * 0.5) + beat * 0.6
+                        levels[index] = Float(min(1, max(0, level)))
+                    }
+                }
+                MainActor.assumeIsolated {
+                    view.webView?.evaluate(SoundSpectrum.script(for: levels))
+                }
+            }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + seconds) {
+            timer?.invalidate()
+            watch.invalidate()
+            Task {
+                // Whether the wallpaper was really playing all that time: a measurement of a
+                // page that stood hidden behind another window says nothing.
+                print("hidden \(hiddenSeconds) s")
+                if let page = view.webView {
+                    let state = await page.value(of: "(function () { var v = document.querySelector('video'); return document.visibilityState + ', video ' + (v ? (v.paused ? 'paused' : 'playing') + ' at ' + v.currentTime.toFixed(1) + ' of ' + v.duration.toFixed(1) + ' s, ' + (v.getVideoPlaybackQuality ? v.getVideoPlaybackQuality().totalVideoFrames + ' frames' : '') : 'none'); })()")
+                    print("page \(state as? String ?? "?")")
+                }
+                exit(0)
+            }
+        }
+    }
+
+    // MARK: - A wallpaper's settings
+
+    /// `--settings-test <scene folder>` does to a scene what the wallpaper's settings do when a
+    /// value is changed in them, and prints what ends up on disk; then it changes the scene file
+    /// from outside, as the editor would, and prints whether the settings took that over.
+    static var settingsTestFolder: URL? {
+        values(of: "--settings-test").last.map { URL(fileURLWithPath: $0, isDirectory: true) }
+    }
+
+    static func settingsTest(_ folder: URL) {
+        NSApp.setActivationPolicy(.accessory)
+        let item = Wallpaper(id: UUID(), name: folder.lastPathComponent, kind: .web, fileName: "index.html", thumbnailFileName: nil,
+                             sourceFormat: "SCENE", wasConverted: false, pixelWidth: 0, pixelHeight: 0, duration: nil,
+                             hasAudio: false, fileSize: 0)
+        let model = WallpaperSettingsModel()
+        model.show(item, folder: folder)
+        func describe(_ scene: WallpaperScene?) -> String {
+            (scene?.variables ?? []).map { variable in
+                switch variable.kind {
+                case .color: return "\(variable.key)=\(variable.color)"
+                case .number: return "\(variable.key)=\(variable.number)"
+                case .toggle: return "\(variable.key)=\(variable.isOn)"
+                case .text, .choice: return "\(variable.key)=\(variable.text)"
+                }
+            }.joined(separator: ", ")
+        }
+        Task {
+            print("read:           ", describe(model.scene))
+            for variable in model.scene?.variables ?? [] {
+                guard let binding = model.binding(for: variable.id) else { continue }
+                switch variable.kind {
+                case .color: binding.wrappedValue.color = "#123456"
+                case .number: binding.wrappedValue.number = variable.number + 1
+                case .toggle: binding.wrappedValue.isOn.toggle()
+                case .text: binding.wrappedValue.text = variable.text + "!"
+                case .choice: binding.wrappedValue.text = variable.options.last ?? variable.text
+                }
+            }
+            print("set:            ", describe(model.scene))
+            print("on disk at once:", describe(try? SceneProject.read(from: folder)))
+            try? await Task.sleep(nanoseconds: 800_000_000)
+            print("on disk later:  ", describe(try? SceneProject.read(from: folder)))
+
+            // From outside: a variable goes, another's value changes.
+            if var edited = try? SceneProject.read(from: folder), !edited.variables.isEmpty {
+                edited.variables.removeLast()
+                if !edited.variables.isEmpty, edited.variables[0].kind == .color {
+                    edited.variables[0].color = "#ABCDEF"
+                }
+                try? SceneProject.write(edited, to: folder)
+            }
+            try? await Task.sleep(nanoseconds: 1_200_000_000)
+            print("after an edit from outside:", describe(model.scene))
+            exit(0)
+        }
+    }
+
     // MARK: - The first picture
 
     /// `--ready-test <video, picture or web wallpaper folder> [--picture <file.png>]` shows a
@@ -277,14 +598,21 @@ enum ScreenshotMode {
     /// prints how long that took and how much of the window was still black when it was revealed.
     /// With `--watch <seconds>` it keeps looking for that long and reports the blackest moment
     /// and whether a web wallpaper's page was loaded anew; `--touch <file name>` rewrites a file
-    /// of the wallpaper meanwhile, as saving it in an editor would.
+    /// of the wallpaper meanwhile, as saving it in an editor would. `--scaling fill|fit|stretch`
+    /// and `--position <percent>` show a video or picture the way those settings of it would,
+    /// in a window of `--window <width> <height>`.
     static var readyTestTarget: URL? {
         values(of: "--ready-test").last.map { URL(fileURLWithPath: $0) }
     }
 
     static func readyTest(_ target: URL) {
         NSApp.setActivationPolicy(.accessory)
-        let size = NSSize(width: 960, height: 600)
+        var size = NSSize(width: 960, height: 600)
+        let arguments = CommandLine.arguments
+        if let index = arguments.firstIndex(of: "--window"), index + 2 < arguments.count,
+           let width = Double(arguments[index + 1]), let height = Double(arguments[index + 2]) {
+            size = NSSize(width: width, height: height)
+        }
         let window = NSWindow(contentRect: NSRect(origin: NSPoint(x: 120, y: 120), size: size), styleMask: [.borderless],
                               backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
@@ -332,10 +660,26 @@ enum ScreenshotMode {
                 exit(0)
             }
         }
-        view.setScaling(.fill)
         view.setPlaying(true, rate: 1)
         var isFolder: ObjCBool = false
         FileManager.default.fileExists(atPath: target.path, isDirectory: &isFolder)
+        // The size of the picture or of the video's frames, as the library would know it.
+        var mediaSize = CGSize.zero
+        if let source = CGImageSourceCreateWithURL(target as CFURL, nil),
+           let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+           let width = properties[kCGImagePropertyPixelWidth] as? Double, let height = properties[kCGImagePropertyPixelHeight] as? Double {
+            mediaSize = CGSize(width: width, height: height)
+        }
+        let scaling = values(of: "--scaling").last.flatMap(ScalingMode.init(rawValue:)) ?? .fill
+        let position = values(of: "--position").last.flatMap(Double.init) ?? 50
+        view.setFraming(scaling, position: position, mediaSize: mediaSize)
+        if mediaSize == .zero, !isFolder.boolValue {
+            Task {
+                guard let track = try? await AVURLAsset(url: target).loadTracks(withMediaType: .video).first,
+                      let size = try? await track.load(.naturalSize) else { return }
+                view.setFraming(scaling, position: position, mediaSize: size)
+            }
+        }
         if isFolder.boolValue, let project = WebProject(folder: target) {
             view.showWeb(project)
         } else if UTType(filenameExtension: target.pathExtension)?.conforms(to: .image) == true {
@@ -381,7 +725,9 @@ enum ScreenshotMode {
     /// was really given, also while paused; `--picture <file.png>` saves how it looked at the end,
     /// `--eval <JavaScript>` runs in the page before the listening and `--eval-after <JavaScript>`
     /// after it, its value printed. `--switch-off-at <second>` turns the reaction to sound off for
-    /// two seconds, as the switch in the settings would.
+    /// two seconds, as the switch in the settings would. `--synthetic` listens to a made-up
+    /// sound instead of the Mac's — three seconds of silence, four of a tone, three of silence,
+    /// three of the tone, then silence — which needs no permission and always goes the same way.
     ///
     /// macOS grants the listening to the app that was launched, so start it through `open`:
     ///
@@ -398,6 +744,9 @@ enum ScreenshotMode {
             var latest: [Float] = []
         }
         let probe = Probe()
+        if CommandLine.arguments.contains("--synthetic") {
+            SoundSpectrum.shared.makeSource = { SyntheticSound(turns: [3, 4, 3, 3]) }
+        }
         SoundSpectrum.shared.addListener(probe) { script in
             // The numbers between the brackets of the script a page would run.
             guard let open = script.lastIndex(of: "["), let close = script.lastIndex(of: "]") else { return }

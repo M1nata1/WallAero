@@ -26,6 +26,13 @@ final class SoundSpectrum {
         let handler: (String) -> Void
     }
 
+    /// Where the sound comes from. Nil means the Mac itself; the helper that checks the
+    /// listening without the Mac's sound puts a made-up source here before anything listens.
+    var makeSource: (() -> SoundSource)? {
+        get { capture.makeSource }
+        set { capture.makeSource = newValue }
+    }
+
     private var listeners: [ObjectIdentifier: Listener] = [:]
     private let capture = Capture()
     private var isCapturing = false
@@ -108,20 +115,39 @@ final class SoundSpectrum {
     }
 }
 
+/// Something that hands over sound as it plays: the tap on the Mac's sound, or a made-up signal
+/// for checking what is done with it.
+protocol SoundSource: AnyObject {
+    var sampleRate: Double { get }
+    /// Starts handing the sound to `handler`, on `queue`, as 32-bit floating-point samples.
+    func start(on queue: DispatchQueue, handler: @escaping (UnsafePointer<AudioBufferList>) -> Void) throws
+    func stop()
+}
+
 /// The listening itself. Everything here happens on one queue of its own: the sound arrives on
 /// it, and starting waits on it for as long as macOS is asking the user for permission.
+///
+/// It is background work and is scheduled as such, which on Apple silicon keeps it on the
+/// efficiency cores. While nothing sounds it rests: the levels are worked out four times a second
+/// instead of thirty, and the first sound that arrives brings the pace back.
 private final class Capture {
     /// Called on the capture's queue with the script for the latest levels.
     var onScript: ((String) -> Void)?
+    /// Makes the source of the sound; nil means the tap on the Mac's own.
+    var makeSource: (() -> SoundSource)?
 
     private static let framesPerSecond = 30.0
     /// How often pages hear from the app while nothing is playing, in seconds.
     private static let silenceInterval = 0.25
     private static let silentScript = SoundSpectrum.script(for: [Float](repeating: 0, count: 2 * SpectrumAnalyzer.bandCount))
+    /// A sample this far from zero ends the rest. It is well under what moves a band, so the
+    /// rest never costs the start of a sound.
+    private static let wakingLevel: Float = 3e-5
+    /// After this many ticks without a level above zero, a second's worth, the rest begins.
+    private static let ticksBeforeRest = 30
 
-    private let queue = DispatchQueue(label: "com.fadevec.WallAeroEngine.sound", qos: .userInitiated)
-    /// A `SystemAudioTap`, which older systems do not have.
-    private var tap: AnyObject?
+    private let queue = DispatchQueue(label: "com.fadevec.WallAeroEngine.sound", qos: .utility)
+    private var tap: SoundSource?
     private var timer: DispatchSourceTimer?
     private var analyzer: SpectrumAnalyzer?
     private var watchesOutputDevice = false
@@ -133,6 +159,8 @@ private final class Capture {
     private var lastSound = DispatchTime(uptimeNanoseconds: 0)
     private var lastSilentScript = DispatchTime(uptimeNanoseconds: 0)
     private var isFlat = false
+    private var flatTicks = 0
+    private var isResting = false
 
     func start() {
         queue.async { self.begin() }
@@ -143,8 +171,15 @@ private final class Capture {
     }
 
     private func begin() {
-        guard tap == nil, #available(macOS 14.2, *) else { return }
-        let tap = SystemAudioTap()
+        guard tap == nil else { return }
+        let tap: SoundSource
+        if let makeSource {
+            tap = makeSource()
+        } else if #available(macOS 14.2, *) {
+            tap = SystemAudioTap()
+        } else {
+            return // older systems cannot be listened to
+        }
         do {
             try tap.start(on: queue) { [weak self] buffers in
                 self?.append(buffers)
@@ -160,9 +195,13 @@ private final class Capture {
         right = left
         writeIndex = 0
         isFlat = false
+        flatTicks = 0
+        isResting = false
         Log.playback.info("Listening to the Mac's sound at \(Int(tap.sampleRate), privacy: .public) Hz")
 
-        let timer = DispatchSource.makeTimerSource(queue: queue)
+        // Strict: macOS spaces out the timers of work it takes for background work, down to a
+        // dozen a second, and an equalizer fed that unevenly stutters.
+        let timer = DispatchSource.makeTimerSource(flags: .strict, queue: queue)
         timer.schedule(deadline: .now(), repeating: 1 / Self.framesPerSecond, leeway: .milliseconds(4))
         timer.setEventHandler { [weak self] in self?.tick() }
         timer.resume()
@@ -173,7 +212,7 @@ private final class Capture {
     private func end() {
         timer?.cancel()
         timer = nil
-        if #available(macOS 14.2, *), let tap = tap as? SystemAudioTap {
+        if let tap {
             tap.stop()
             Log.playback.info("Stopped listening to the Mac's sound")
         }
@@ -193,6 +232,17 @@ private final class Capture {
             guard let self, self.tap != nil else { return }
             self.end()
             self.begin()
+        }
+    }
+
+    private func setResting(_ resting: Bool) {
+        guard resting != isResting, let timer else { return }
+        isResting = resting
+        flatTicks = 0
+        if resting {
+            timer.schedule(deadline: .now() + Self.silenceInterval, repeating: Self.silenceInterval, leeway: .milliseconds(50))
+        } else {
+            timer.schedule(deadline: .now(), repeating: 1 / Self.framesPerSecond, leeway: .milliseconds(4))
         }
     }
 
@@ -221,12 +271,19 @@ private final class Capture {
             }
         }
         lastSound = .now()
+        if isResting {
+            var loudest: Float = 0
+            vDSP_maxmgv(firstSamples, 1, &loudest, vDSP_Length(Int(first.mDataByteSize) / MemoryLayout<Float>.size))
+            if loudest >= Self.wakingLevel {
+                setResting(false)
+            }
+        }
     }
 
     private func tick() {
         guard let analyzer else { return }
         let now = DispatchTime.now()
-        let interval = 1 / Self.framesPerSecond
+        let interval = isResting ? Self.silenceInterval : 1 / Self.framesPerSecond
         // With nothing playing the sound may stop arriving altogether; what is left in the
         // buffers then is old.
         let isArriving = now.uptimeNanoseconds - lastSound.uptimeNanoseconds < 150_000_000
@@ -238,11 +295,20 @@ private final class Capture {
         }
         if levels.contains(where: { $0 > 0 }) {
             isFlat = false
+            flatTicks = 0
             onScript?(SoundSpectrum.script(for: levels))
-        } else if !isFlat || Double(now.uptimeNanoseconds - lastSilentScript.uptimeNanoseconds) >= Self.silenceInterval * 1e9 {
+            return
+        }
+        // Zeros go out at once when the sound stops, and after that only as often as a page
+        // needs them to know that what it hears is silence.
+        if !isFlat || isResting || Double(now.uptimeNanoseconds - lastSilentScript.uptimeNanoseconds) >= Self.silenceInterval * 1e9 {
             isFlat = true
             lastSilentScript = now
             onScript?(Self.silentScript)
+        }
+        flatTicks += 1
+        if flatTicks >= Self.ticksBeforeRest {
+            setResting(true)
         }
     }
 
@@ -263,7 +329,7 @@ private final class Capture {
 /// macOS asks the user once whether the app may listen. Until they answer, `start` waits; if
 /// they refuse, it still succeeds and the tap delivers silence.
 @available(macOS 14.2, *)
-final class SystemAudioTap {
+final class SystemAudioTap: SoundSource {
     struct Failure: Error, CustomStringConvertible {
         let step: String
         let status: OSStatus

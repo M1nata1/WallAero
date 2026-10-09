@@ -1,8 +1,8 @@
 import SwiftUI
 import WallpaperCore
 
-/// The scene editor's window: layers on the left, the live preview in the middle, the properties
-/// of what is selected on the right.
+/// The scene editor's window: layers and variables on the left, the live preview in the middle,
+/// the properties of what is selected on the right.
 struct SceneEditorView: View {
     @ObservedObject var model: SceneEditorModel
     let preview: SceneEditorPreviewController
@@ -40,6 +40,19 @@ struct SceneEditorView: View {
             }
             .fixedSize()
 
+            Menu {
+                ForEach(WallpaperScene.Variable.Kind.allCases, id: \.self) { kind in
+                    Button {
+                        model.addVariable(kind)
+                    } label: {
+                        Label(SceneEditorModel.defaultTitle(for: kind), systemImage: SceneEditorModel.symbol(for: kind))
+                    }
+                }
+            } label: {
+                Label("Add Variable", systemImage: "slider.horizontal.3")
+            }
+            .fixedSize()
+
             Button(action: model.undo) {
                 Label("Undo", systemImage: "arrow.uturn.backward")
             }
@@ -69,7 +82,7 @@ struct SceneEditorView: View {
     }
 }
 
-/// The layers, the one in front first, and the background below them all.
+/// The layers, the one in front first, the scene's variables, and the background below them all.
 private struct LayerList: View {
     @ObservedObject var model: SceneEditorModel
 
@@ -94,11 +107,32 @@ private struct LayerList: View {
                             .foregroundStyle(.secondary)
                     }
                 }
+                if !model.scene.variables.isEmpty {
+                    Section("Variables") {
+                        ForEach(model.scene.variables) { variable in
+                            HStack(spacing: 8) {
+                                Image(systemName: SceneEditorModel.symbol(for: variable.kind))
+                                    .foregroundStyle(.secondary)
+                                    .frame(width: 18)
+                                Text(verbatim: variable.title)
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                            }
+                            .tag(variable.id)
+                            .contextMenu {
+                                Button("Delete", role: .destructive) { model.delete(variable.id) }
+                            }
+                        }
+                        .onMove { source, destination in
+                            model.moveVariables(fromOffsets: source, toOffset: destination)
+                        }
+                    }
+                }
             }
             .listStyle(.sidebar)
             .onDeleteCommand {
                 if let id = model.selection {
-                    model.deleteLayer(id)
+                    model.delete(id)
                 }
             }
             Divider()

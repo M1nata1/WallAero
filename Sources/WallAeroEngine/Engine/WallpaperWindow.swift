@@ -47,6 +47,10 @@ final class WallpaperView: NSView {
     private var videoHasAudio = false
     private var playerHasAudio = false
 
+    private var scaling = ScalingMode.fill
+    private var position = 50.0
+    private var mediaSize = CGSize.zero
+
     // Requested playback state, applied whenever a player becomes available.
     private var isPlaying = false
     private var rate: Float = 1
@@ -75,11 +79,7 @@ final class WallpaperView: NSView {
 
     override func setFrameSize(_ newSize: NSSize) {
         super.setFrameSize(newSize)
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        playerLayer.frame = bounds
-        imageLayer.frame = bounds
-        CATransaction.commit()
+        layoutMedia()
     }
 
     // MARK: - Content
@@ -105,10 +105,12 @@ final class WallpaperView: NSView {
         contentIsReady()
     }
 
-    func showWeb(_ project: WebProject) {
+    /// `hearsSound` is off only for the helper that measures a wallpaper without listening to
+    /// the Mac.
+    func showWeb(_ project: WebProject, hearsSound: Bool = true) {
         clear()
         let webView = WebWallpaperView(frame: bounds)
-        webView.hearsSound = true
+        webView.hearsSound = hearsSound
         addSubview(webView)
         self.webView = webView
         webView.setAudio(muted: isMuted, volume: volume)
@@ -162,20 +164,47 @@ final class WallpaperView: NSView {
         }
     }
 
-    func setScaling(_ mode: ScalingMode) {
+    /// How the video or picture fills the view. `position` matters when filling crops it: in
+    /// percent, 0 keeps the left or the top in view, 100 the right or the bottom. `mediaSize` is
+    /// the size of the video or picture in pixels. A web wallpaper lays itself out.
+    func setFraming(_ scaling: ScalingMode, position: Double, mediaSize: CGSize) {
+        self.scaling = scaling
+        self.position = position
+        self.mediaSize = mediaSize
+        layoutMedia()
+    }
+
+    private func layoutMedia() {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        switch mode {
+        var frame = bounds
+        var videoGravity = AVLayerVideoGravity.resize
+        var imageGravity = CALayerContentsGravity.resize
+        switch scaling {
         case .fill:
-            playerLayer.videoGravity = .resizeAspectFill
-            imageLayer.contentsGravity = .resizeAspectFill
+            if mediaSize.width > 0, mediaSize.height > 0, bounds.width > 0, bounds.height > 0 {
+                // Scaled until it covers the view; what does not fit hangs over two opposite
+                // edges and is cut off, and the position says how much over which of them.
+                let scale = max(bounds.width / mediaSize.width, bounds.height / mediaSize.height)
+                let size = CGSize(width: mediaSize.width * scale, height: mediaSize.height * scale)
+                let share = CGFloat(min(max(position, 0), 100) / 100)
+                // The layer's y axis points up, so keeping the top in view is its far end.
+                frame = CGRect(x: (bounds.width - size.width) * share, y: (bounds.height - size.height) * (1 - share),
+                               width: size.width, height: size.height)
+            } else {
+                videoGravity = .resizeAspectFill
+                imageGravity = .resizeAspectFill
+            }
         case .fit:
-            playerLayer.videoGravity = .resizeAspect
-            imageLayer.contentsGravity = .resizeAspect
+            videoGravity = .resizeAspect
+            imageGravity = .resizeAspect
         case .stretch:
-            playerLayer.videoGravity = .resize
-            imageLayer.contentsGravity = .resize
+            break
         }
+        playerLayer.frame = frame
+        imageLayer.frame = frame
+        playerLayer.videoGravity = videoGravity
+        imageLayer.contentsGravity = imageGravity
         CATransaction.commit()
     }
 

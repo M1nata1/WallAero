@@ -36,6 +36,33 @@ public enum SceneProject {
         return try encoder.encode(scene)
     }
 
+    /// Stores the values of these variables in the scene on disk and leaves the rest of it as
+    /// it is there: the wallpaper's settings change what variables are set to, never which
+    /// variables or layers the scene has. `framing`, if given, is how the background fills the
+    /// screen. Returns the scene as it is on disk now.
+    @discardableResult
+    public static func storeValues(of variables: [WallpaperScene.Variable],
+                                   framing: (fit: WallpaperScene.Background.Fit, position: Double)? = nil,
+                                   in folder: URL) throws -> WallpaperScene {
+        var scene = try read(from: folder)
+        let stored = scene
+        if let framing {
+            scene.background.fit = framing.fit
+            scene.background.position = framing.position
+        }
+        for (index, variable) in scene.variables.enumerated() {
+            guard let source = variables.first(where: { $0.id == variable.id }), source.kind == variable.kind else { continue }
+            scene.variables[index].color = source.color
+            scene.variables[index].number = source.number
+            scene.variables[index].isOn = source.isOn
+            scene.variables[index].text = source.text
+        }
+        if scene != stored {
+            try write(scene, to: folder)
+        }
+        return scene
+    }
+
     /// Turns the folder into a scene: writes the scene and everything that draws it.
     public static func create(at folder: URL, scene: WallpaperScene) throws {
         try FileManager.default.createDirectory(at: folder.appendingPathComponent(mediaFolderName),
@@ -102,6 +129,10 @@ public enum SceneProject {
     //
     //     document.addEventListener('wallaero:scene', event => { /* event.detail is the scene */ });
     //
+    // The scene's variables, as they are set now, are in `wallaero.variables`; to follow them:
+    //
+    //     document.addEventListener('wallaero:variables', event => { /* event.detail.name */ });
+    //
     // To follow the sound the Mac is playing — 64 bands of the left channel, then 64 of the right,
     // low notes first, each from 0 to 1:
     //
@@ -156,6 +187,7 @@ public enum SceneProject {
       var backgroundKey = null;
       var built = {}; // layer id -> { json, element }
       var clock = null;
+      var variables = {}; // key -> value, as set now
 
       // A length given for a 1080-pixel-high screen, as a CSS length that follows the screen.
       function px(value) { return ((Number(value) || 0) / 10.8) + 'vh'; }
@@ -182,14 +214,59 @@ public enum SceneProject {
         yy: function (d) { return pad(d.getFullYear() % 100); }
       };
 
+      function has(object, name) { return Object.prototype.hasOwnProperty.call(object, name); }
+
+      // `{HH}` and the like become the time and date; `{name}` of a variable becomes its value.
       function fillTokens(text, now) {
         return String(text || '').replace(/\{(\w+)\}/g, function (whole, name) {
-          return Object.prototype.hasOwnProperty.call(tokens, name) ? tokens[name](now) : whole;
+          if (has(tokens, name)) return tokens[name](now);
+          return has(variables, name) ? String(variables[name]) : whole;
         });
       }
 
+      // Whether the text shows the time or the date, and so has to be filled in every second.
       function hasTokens(text) {
-        return /\{(\w+)\}/.test(text || '') && fillTokens(text, new Date(0)) !== text;
+        var found = false;
+        String(text || '').replace(/\{(\w+)\}/g, function (whole, name) {
+          if (has(tokens, name)) found = true;
+          return whole;
+        });
+        return found;
+      }
+
+      // --- Variables --------------------------------------------------------
+
+      // Variables are what the scene lets be changed from the wallpaper's settings. Each is
+      // there for CSS as a custom property of the page (`var(--name)`), for scripts in
+      // `wallaero.variables`, and for text layers as `{name}`. Returns whether any changed.
+      function showVariables(list) {
+        var next = {};
+        var root = document.documentElement.style;
+        (list || []).forEach(function (variable) {
+          if (!variable || !/^[A-Za-z_]\w*$/.test(variable.key || '')) return;
+          var value, css;
+          if (variable.kind === 'number') {
+            value = number(variable.number, 0);
+            css = '' + value;
+          } else if (variable.kind === 'toggle') {
+            value = variable.isOn !== false;
+            css = value ? '1' : '0';
+          } else if (variable.kind === 'color') {
+            value = css = variable.color || '#ffffff';
+          } else {
+            value = String(variable.text || '');
+            // A text is a string for CSS, to be used in `content`; a choice is a bare word.
+            css = variable.kind === 'choice' ? value : JSON.stringify(value);
+          }
+          next[variable.key] = value;
+          root.setProperty('--' + variable.key, css);
+        });
+        Object.keys(variables).forEach(function (key) {
+          if (!has(next, key)) root.removeProperty('--' + key);
+        });
+        var changed = JSON.stringify(next) !== JSON.stringify(variables);
+        variables = next;
+        return changed;
       }
 
       var genericFamilies = ['-apple-system', 'system-ui', 'serif', 'sans-serif', 'monospace', 'cursive',
@@ -238,6 +315,9 @@ public enum SceneProject {
 
         var blur = Math.max(0, number(bg.blur, 0));
         media.style.objectFit = bg.fit || 'cover';
+        // Which part stays in view when covering the screen crops the media.
+        var position = Math.min(100, Math.max(0, number(bg.position, 50))) + '%';
+        media.style.objectPosition = position + ' ' + position;
         // A blurred picture fades out at its edges; drawing it a little larger hides that.
         var spill = px(blur * 2);
         media.style.left = media.style.top = 'calc(-1 * ' + spill + ')';
@@ -396,17 +476,25 @@ public enum SceneProject {
 
       function setScene(next) {
         scene = next || {};
+        // First of all, so that the layers' scripts find the variables when they start.
+        var variablesChanged = showVariables(scene.variables);
         showBackground(scene.background || {});
         showLayers(scene.layers || []);
         restartClock();
+        if (variablesChanged) {
+          tick(); // texts that show a variable
+          document.dispatchEvent(new CustomEvent('wallaero:variables', { detail: window.wallaero.variables }));
+        }
         document.dispatchEvent(new CustomEvent('wallaero:scene', { detail: scene }));
       }
 
       window.wallaero = {
-        version: 1,
+        version: 2,
         setScene: setScene,
         tokens: tokens,
-        get scene() { return scene; }
+        get scene() { return scene; },
+        // A copy: the values are changed from the wallpaper's settings, not from here.
+        get variables() { return Object.assign({}, variables); }
       };
 
       if (window.wallaeroScene) {

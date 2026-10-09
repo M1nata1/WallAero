@@ -91,7 +91,19 @@ final class WallpaperManager: NSObject, ObservableObject {
         super.init()
     }
 
+    /// Scaling and speed used to be set once for all wallpapers. The first time this version
+    /// runs, the wallpapers of the library take those values as their own.
+    private func handOverSharedSettings() {
+        let key = "wallpapersHaveOwnSettings"
+        guard !UserDefaults.standard.bool(forKey: key) else { return }
+        UserDefaults.standard.set(true, forKey: key)
+        let shared = Wallpaper.Settings(scaling: preferences.scaling, speed: preferences.playbackRate)
+        guard shared != Wallpaper.Settings() else { return }
+        library.adoptSettings { _ in shared }
+    }
+
     func start() {
+        handOverSharedSettings()
         let center = NotificationCenter.default
         center.addObserver(
             self, selector: #selector(screensDidChange),
@@ -226,9 +238,14 @@ final class WallpaperManager: NSObject, ObservableObject {
         // Only one display plays sound: the first one, in menu bar order, showing a video with audio.
         // With music of the user's own, none does: the music takes the place of the videos' sound.
         let audibleDisplay = playsMusic ? nil : displays.first { screens[$0.id]?.item?.hasAudio == true }?.id
+        // With the volume all the way down nothing is heard, so nothing is played: a video or
+        // a song at volume zero would still keep the audio hardware running and the Mac awake.
         for screen in screens.values {
-            screen.view.setScaling(preferences.scaling)
-            let audible = preferences.playsSound && screen.displayID == audibleDisplay
+            if let item = screen.item {
+                screen.view.setFraming(item.shownSettings.scaling, position: item.shownSettings.position,
+                                       mediaSize: CGSize(width: item.pixelWidth, height: item.pixelHeight))
+            }
+            let audible = isAudible && screen.displayID == audibleDisplay
             screen.view.setAudio(muted: !audible, volume: Float(preferences.volume))
         }
         music.volume = Float(preferences.volume)
@@ -243,11 +260,11 @@ final class WallpaperManager: NSObject, ObservableObject {
         }
         for screen in screens.values {
             let visible = !preferences.pauseWhenCovered || screen.isVisibleOnScreen
-            screen.setPlaying(pauseReason == nil && visible, rate: Float(preferences.playbackRate))
+            screen.setPlaying(pauseReason == nil && visible, rate: Float(screen.item?.shownSettings.speed ?? 1))
         }
         // Unlike the picture, the music goes on while windows cover the desktop: songs that
         // stopped whenever a window was maximized would be of little use.
-        music.setPlaying(playsMusic && hasWallpaper && pauseReason == nil)
+        music.setPlaying(playsMusic && isAudible && hasWallpaper && pauseReason == nil)
     }
 
     private func currentPauseReason() -> PauseReason? {
@@ -266,6 +283,21 @@ final class WallpaperManager: NSObject, ObservableObject {
         updatePlayback()
         reloadMusic()
         syncSystemWallpapers()
+    }
+
+    /// A wallpaper that is on a display now: the one for all displays, or else any display's own.
+    var shownWallpaperID: UUID? {
+        assignments.allDisplays ?? displays.lazy.compactMap { self.assignments.wallpaperID(forDisplay: $0.id) }.first
+    }
+
+    /// Shows a scene on the desktop as it is being changed in the wallpaper's settings, without
+    /// waiting for it to be saved.
+    func showUnsaved(_ scene: WallpaperScene, of id: UUID) {
+        guard let data = try? SceneProject.encoded(scene, readable: false) else { return }
+        let script = "window.wallaero && window.wallaero.setScene(\(String(decoding: data, as: UTF8.self)))"
+        for screen in screens.values where screen.item?.id == id {
+            screen.view.webView?.evaluate(script)
+        }
     }
 
     // MARK: - Web wallpapers
@@ -338,6 +370,9 @@ final class WallpaperManager: NSObject, ObservableObject {
 
     /// Whether the user's music plays in place of the videos' own sound.
     var playsMusic: Bool { preferences.playsSound && music.hasTracks }
+
+    /// Whether anything can be heard at all: sound is on and the volume is above zero.
+    private var isAudible: Bool { preferences.playsSound && preferences.volume > 0 }
 
     /// Brings the player in line with the chosen folder, playlist and order. The folder is read
     /// off the main thread: a large collection takes a moment.
@@ -556,7 +591,11 @@ final class ScreenWallpaper: NSObject {
     }
 
     func show(_ newItem: Wallpaper?, from library: WallpaperLibrary) {
-        guard newItem?.id != item?.id else { return }
+        guard newItem?.id != item?.id else {
+            // The same wallpaper, possibly with other settings; the manager applies those.
+            item = newItem
+            return
+        }
         item = newItem
         isPlaying = false
         guard let newItem else {

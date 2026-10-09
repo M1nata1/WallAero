@@ -1,10 +1,37 @@
 import SwiftUI
 import WallpaperCore
 
-struct SettingsView: View {
-    /// Window content height; the form scrolls when its sections need more.
-    var height: CGFloat = 720
+/// The settings at the side of the main window: the selected wallpaper's and the app's own, one
+/// kind at a time.
+struct SettingsPanel: View {
+    @EnvironmentObject private var state: MainWindowState
+    /// Opens a wallpaper in the scene editor, from its settings.
+    let edit: (Wallpaper) -> Void
 
+    var body: some View {
+        VStack(spacing: 0) {
+            Picker("", selection: $state.settingsTab) {
+                Text("settings.tab.wallpaper").tag(MainWindowState.SettingsTab.wallpaper)
+                Text("settings.tab.general").tag(MainWindowState.SettingsTab.general)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .padding(.horizontal, 20)
+            .padding(.top, 12)
+            .padding(.bottom, 4)
+            switch state.settingsTab {
+            case .wallpaper: WallpaperSettingsView(edit: edit)
+            case .general: SettingsView()
+            }
+        }
+        .frame(width: MainWindowState.settingsWidth)
+        .frame(maxHeight: .infinity)
+        .background(Color(nsColor: .windowBackgroundColor))
+    }
+}
+
+/// The app's own settings. The form scrolls when the window is shorter than its sections.
+struct SettingsView: View {
     @EnvironmentObject private var preferences: Preferences
     @EnvironmentObject private var library: WallpaperLibrary
     @State private var opensAtLogin = LaunchAtLogin.isEnabled
@@ -13,16 +40,6 @@ struct SettingsView: View {
     var body: some View {
         Form {
             Section("Playback") {
-                Picker("Scaling", selection: $preferences.scaling) {
-                    ForEach(ScalingMode.allCases) { mode in
-                        Text(mode.title).tag(mode)
-                    }
-                }
-                Picker("Speed", selection: $preferences.playbackRate) {
-                    ForEach(Preferences.playbackRates, id: \.self) { rate in
-                        Text(Self.title(forRate: rate)).tag(rate)
-                    }
-                }
                 Toggle("Play sound", isOn: $preferences.playsSound)
                 Slider(value: $preferences.volume, in: 0...1) {
                     Text("Volume")
@@ -65,7 +82,7 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 500, height: height)
+        .frame(maxHeight: .infinity)
     }
 
     private func updateLoginItem(_ enabled: Bool) {
@@ -80,12 +97,6 @@ struct SettingsView: View {
         }
     }
 
-    private static func title(forRate rate: Double) -> String {
-        if rate == 1 {
-            return NSLocalizedString("Normal", comment: "Playback speed 1×")
-        }
-        return String(format: "%g×", rate)
-    }
 }
 
 /// The rows for the user's own music: the folder, and once it is chosen, the playlist and order.

@@ -30,6 +30,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             app.run()
             return
         }
+        if let target = ScreenshotMode.energyTestTarget {
+            ScreenshotMode.energyTest(target)
+            app.run()
+            return
+        }
+        if let folder = ScreenshotMode.settingsTestFolder {
+            ScreenshotMode.settingsTest(folder)
+            app.run()
+            return
+        }
         if let target = ScreenshotMode.readyTestTarget {
             ScreenshotMode.readyTest(target)
             app.run()
@@ -52,34 +62,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     override init() {
-        library = WallpaperLibrary()
+        // The screenshot helper can be pointed at another library, to picture things the
+        // user's own does not have.
+        library = ScreenshotMode.libraryFolder.map { WallpaperLibrary(rootURL: $0) } ?? WallpaperLibrary()
         preferences = Preferences()
         manager = WallpaperManager(library: library, preferences: preferences)
         importer = ImportCoordinator(library: library, manager: manager)
         super.init()
-        windows = WindowManager(
-            library: { [unowned self] in
-                AnyView(
-                    LibraryView(actions: LibraryActions(
-                        addFiles: { [unowned self] in addWallpapers(nil) },
-                        openSettings: { [unowned self] in showSettings(nil) },
-                        editScene: { [unowned self] item in editScene(item) }
-                    ))
-                    .environmentObject(library)
-                    .environmentObject(manager)
-                    .environmentObject(importer)
-                )
-            },
-            settings: { [unowned self] in
-                AnyView(
-                    SettingsView()
-                        .environmentObject(preferences)
-                        .environmentObject(library)
-                        .environmentObject(manager)
-                        .environmentObject(cursorSettings)
-                )
-            }
-        )
+        windows = WindowManager(main: { [unowned self] in
+            AnyView(
+                MainView(actions: LibraryActions(
+                    addFiles: { [unowned self] in addWallpapers(nil) },
+                    toggleSettings: { [unowned self] in windows.setSettingsShown(!windows.state.showsSettings) },
+                    edit: { [unowned self] item in edit(item) }
+                ))
+                .environmentObject(library)
+                .environmentObject(manager)
+                .environmentObject(importer)
+                .environmentObject(preferences)
+                .environmentObject(cursorSettings)
+                .environmentObject(windows.state)
+            )
+        })
     }
 
     // MARK: - NSApplicationDelegate
@@ -145,6 +149,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc func showSettings(_ sender: Any?) {
         windows.showSettings()
+    }
+
+    /// Opens a wallpaper in the scene editor. A video or a picture first becomes a scene with
+    /// itself as the background; the original stays in the library as it is.
+    func edit(_ item: Wallpaper) {
+        if item.kind == .web {
+            editScene(item)
+            return
+        }
+        do {
+            let name = String(format: NSLocalizedString("%@ (scene)", comment: "Name of a scene made from a wallpaper"), item.name)
+            let scene = try library.makeScene(from: item, named: name)
+            windows.state.selection = scene.id
+            editScene(scene)
+        } catch {
+            NSAlert(error: error).runModal()
+        }
     }
 
     /// Opens the editor for a scene of the library, or brings it forward if it is open.

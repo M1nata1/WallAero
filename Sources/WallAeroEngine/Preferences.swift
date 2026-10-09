@@ -1,14 +1,12 @@
 import Combine
 import Foundation
+import WallpaperCore
 
-enum ScalingMode: String, CaseIterable, Identifiable {
-    /// Covers the whole screen, cropping the edges if the aspect ratio differs.
-    case fill
-    /// Shows the whole picture with black bars.
-    case fit
-    case stretch
+/// How a wallpaper fills the screen; each wallpaper has its own setting, kept in the library.
+typealias ScalingMode = Wallpaper.Settings.Scaling
 
-    var id: String { rawValue }
+extension Wallpaper.Settings.Scaling: Identifiable {
+    public var id: String { rawValue }
 
     var title: String {
         switch self {
@@ -22,6 +20,13 @@ enum ScalingMode: String, CaseIterable, Identifiable {
 @MainActor
 final class Preferences: ObservableObject {
     static let playbackRates: [Double] = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2]
+
+    static func title(forRate rate: Double) -> String {
+        if rate == 1 {
+            return NSLocalizedString("Normal", comment: "Playback speed 1×")
+        }
+        return String(format: "%g×", rate)
+    }
 
     private enum Key {
         static let scaling = "scaling"
@@ -40,6 +45,8 @@ final class Preferences: ObservableObject {
 
     private let defaults: UserDefaults
 
+    // Scaling and speed used to be one setting for all wallpapers. Each wallpaper has its own
+    // now; these are only read once, to hand the old values over to the wallpapers there were.
     @Published var scaling: ScalingMode {
         didSet { defaults.set(scaling.rawValue, forKey: Key.scaling) }
     }

@@ -16,3 +16,5 @@
 "animation.spin" = "Spin";
 "animation.blink" = "Blink";
 "seconds.short" = "s";
+"settings.tab.wallpaper" = "Wallpaper";
+"settings.tab.general" = "General";

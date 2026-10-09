@@ -16,11 +16,12 @@ enum SceneEditorScript {
       sheet.textContent =
         '.wallaero-layer { cursor: move; pointer-events: auto; }' +
         '.wallaero-layer * { pointer-events: none; }' +
-        '.wallaero-layer:hover { outline: 1px dashed rgba(10, 132, 255, 0.8); }' +
+        // The selection is drawn in the Mac's accent color, which the app hands over (`setAccent`).
+        '.wallaero-layer:hover { outline: 1px dashed var(--wallaero-accent, #0a84ff); }' +
         '#wallaero-editor { position: fixed; left: 0; top: 0; width: 100%; height: 100%; pointer-events: none; z-index: 2147483000; }' +
-        '.wallaero-frame { position: absolute; box-sizing: border-box; border: 1.5px solid #0a84ff; display: none; }' +
+        '.wallaero-frame { position: absolute; box-sizing: border-box; border: 1.5px solid var(--wallaero-accent, #0a84ff); display: none; }' +
         '.wallaero-handle { position: absolute; width: 10px; height: 10px; margin: -5px 0 0 -5px; box-sizing: border-box;' +
-        '  background: #fff; border: 1.5px solid #0a84ff; border-radius: 2px; pointer-events: auto; }' +
+        '  background: #fff; border: 1.5px solid var(--wallaero-accent, #0a84ff); border-radius: 2px; pointer-events: auto; }' +
         '.wallaero-handle[data-handle=nw] { left: 0; top: 0; cursor: nwse-resize; }' +
         '.wallaero-handle[data-handle=ne] { left: 100%; top: 0; cursor: nesw-resize; }' +
         '.wallaero-handle[data-handle=sw] { left: 0; top: 100%; cursor: nesw-resize; }' +
@@ -209,7 +210,10 @@ enum SceneEditorScript {
       // Text can change size on its own: a clock ticking over, a font arriving late.
       setInterval(placeFrame, 500);
 
-      window.wallaeroEditor = { select: function (id) { select(id, false); } };
+      window.wallaeroEditor = {
+        select: function (id) { select(id, false); },
+        setAccent: function (color) { document.documentElement.style.setProperty('--wallaero-accent', color); }
+      };
       post({ type: 'ready' });
     })();
     """#

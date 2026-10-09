@@ -2,8 +2,8 @@ import AppKit
 import SwiftUI
 import WallpaperCore
 
-/// The right-hand side of the editor: the properties of the selected layer, or of the background
-/// when no layer is selected.
+/// The right-hand side of the editor: the properties of the selected layer or variable, or of
+/// the background when neither is selected.
 struct SceneInspector: View {
     @ObservedObject var model: SceneEditorModel
 
@@ -11,6 +11,8 @@ struct SceneInspector: View {
         Form {
             if let id = model.selection, let layer = model.binding(for: id) {
                 LayerInspector(layer: layer, model: model)
+            } else if let id = model.selection, let variable = model.variableBinding(for: id) {
+                VariableInspector(variable: variable, model: model)
             } else {
                 BackgroundInspector(background: $model.scene.background, model: model)
             }
@@ -46,6 +48,9 @@ private struct BackgroundInspector: View {
                     Text("Fill Screen").tag(WallpaperScene.Background.Fit.cover)
                     Text("Fit to Screen").tag(WallpaperScene.Background.Fit.contain)
                     Text("Stretch").tag(WallpaperScene.Background.Fit.fill)
+                }
+                if background.fit == .cover {
+                    NumberRow("Position", value: $background.position, in: 0...100, suffix: "%")
                 }
             }
             ColorRow("Color", hex: $background.color)
@@ -234,14 +239,19 @@ private func fileName(_ source: String?) -> String {
 // MARK: - Rows
 
 /// A number with a slider for coarse changes and a field for exact ones.
-private struct NumberRow: View {
-    let title: LocalizedStringKey
+struct NumberRow: View {
+    let title: Text
     @Binding var value: Double
     let range: ClosedRange<Double>
     let step: Double
     let suffix: String
 
     init(_ title: LocalizedStringKey, value: Binding<Double>, in range: ClosedRange<Double>, step: Double = 1, suffix: String = "") {
+        self.init(title: Text(title), value: value, in: range, step: step, suffix: suffix)
+    }
+
+    /// With a title that is shown as it is: the user's own name for something.
+    init(title: Text, value: Binding<Double>, in range: ClosedRange<Double>, step: Double = 1, suffix: String = "") {
         self.title = title
         _value = value
         self.range = range
@@ -250,7 +260,7 @@ private struct NumberRow: View {
     }
 
     var body: some View {
-        LabeledContent(title) {
+        LabeledContent {
             HStack(spacing: 6) {
                 Slider(value: stepped, in: range)
                     .frame(minWidth: 56)
@@ -262,6 +272,8 @@ private struct NumberRow: View {
                     .foregroundStyle(.secondary)
                     .frame(width: 14, alignment: .leading)
             }
+        } label: {
+            title
         }
     }
 
@@ -276,20 +288,26 @@ private struct NumberRow: View {
 }
 
 /// A colour kept as CSS text, such as "#FFAA00" or, with transparency, "#FFAA0080".
-private struct ColorRow: View {
-    let title: LocalizedStringKey
+struct ColorRow: View {
+    let title: Text
     @Binding var hex: String
 
     init(_ title: LocalizedStringKey, hex: Binding<String>) {
+        self.init(title: Text(title), hex: hex)
+    }
+
+    init(title: Text, hex: Binding<String>) {
         self.title = title
         _hex = hex
     }
 
     var body: some View {
-        ColorPicker(title, selection: Binding(
+        ColorPicker(selection: Binding(
             get: { Color(nsColor: NSColor(cssHex: hex) ?? .white) },
             set: { hex = NSColor($0).cssHex }
-        ), supportsOpacity: true)
+        ), supportsOpacity: true) {
+            title
+        }
     }
 }
 

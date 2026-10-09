@@ -4,7 +4,7 @@
 Live wallpapers for macOS: videos, GIFs and pictures on your desktop — beneath icons and windows, on every Space and every display. Plus animated cursors from Windows cursor packs.
 
 <p align="center">
-  <img src="docs/screenshots/en/library.png" width="780" alt="The WallAero Engine library window">
+  <img src="docs/screenshots/en/library.png" width="900" alt="The WallAero Engine window: the library, and the settings of the selected wallpaper at its side">
 </p>
 
 ## Features
@@ -19,7 +19,8 @@ Live wallpapers for macOS: videos, GIFs and pictures on your desktop — beneath
 - **Your own music:** listen to your own songs in place of the video's sound. Pick a folder in Settings: its subfolders and `.m3u` files become playlists. With no folder chosen, the sound comes from the video. See [Music](#music).
 - **Cursors:** Windows cursor packs (`.ani`, `.cur`) replace the pointer across the whole system, animation included. Which file becomes which pointer is read from the pack's `install.inf`. See [Cursors](#cursors).
 - **Controls:** a menu bar icon (pause, next wallpaper, quick pick), a library window with drag and drop, and Open With → WallAero Engine in Finder.
-- **Settings:** scaling (fill / fit / stretch), speed, sound and volume, open at login, and the first frame as the regular macOS wallpaper (shown on the lock screen and in Mission Control).
+- **Settings of every wallpaper:** scaling (fill / fit / stretch), which part stays in view when filling crops the picture, and speed. A scene adds the settings its author put up for changing.
+- **Settings of the app:** sound and volume, open at login, and the first frame as the regular macOS wallpaper (shown on the lock screen and in Mission Control).
 - **Interface language:** English or Russian, following the system language; any other language gets English. To change it for WallAero Engine alone, go to System Settings → General → Language & Region → Applications.
 
 ## Installation
@@ -61,17 +62,17 @@ The app is signed ad hoc, so a copy built on your own Mac opens right away, with
 2. Drag files or folders into the window, or click Add….
 3. Double-click a wallpaper (or click Set as Wallpaper), and it is on your desktop.
 
-Everything else is in the menu bar icon. While its windows are closed, the app takes no space in the Dock.
+The settings are at the side of the same window; the gear button hides and shows them, and ⌘, opens the app's own. They have two tabs. Wallpaper is about the wallpaper selected in the library: its preview, the button that opens it in the editor, its scaling, position and speed, and the [variables](#scenes) of a scene. General holds the app's own settings. Everything else is in the menu bar icon. While its windows are closed, the app takes no space in the Dock.
 
 ## Music
 
-Open Settings → Playback → Music folder and pick a folder with your songs. Sound turns on by itself, and the music takes the place of the video's sound.
+Open Settings → General → Playback → Music folder and pick a folder with your songs. Sound turns on by itself, and the music takes the place of the video's sound.
 
 - **Playlists.** Every subfolder with music in it is a playlist, and so is every `.m3u` or `.m3u8` file. In Settings you choose one playlist or All Music. Songs lying directly in the chosen folder play only under All Music.
 - **Order.** Songs play in order, around and around. Shuffle plays them in random order: each one once before any repeats.
 - **Formats:** MP3, M4A, AAC, WAV, AIFF and FLAC. A file that cannot be opened is skipped.
 - **Next Track** is in the menu bar icon's menu, which also shows the song that is playing.
-- **Pausing.** Music keeps playing while windows cover the desktop. It pauses together with the wallpaper: on Pause in the menu, while the screen is locked or the displays sleep and, if you turned those on, on battery power and in Low Power Mode. Without a wallpaper chosen, music does not play.
+- **Pausing.** Music keeps playing while windows cover the desktop. It pauses together with the wallpaper: on Pause in the menu, while the screen is locked or the displays sleep and, if you turned those on, on battery power and in Low Power Mode. Without a wallpaper chosen, music does not play. With the volume all the way down nothing plays either, and the music goes on from the same place when you turn it up.
 - **Back to the video's sound:** click Remove next to the folder.
 
 ## Scenes
@@ -80,13 +81,14 @@ Open Settings → Playback → Music folder and pick a folder with your songs. S
   <img src="docs/screenshots/en/editor.png" width="900" alt="The WallAero Engine scene editor: layers, the preview and the selected layer's properties">
 </p>
 
-A scene is a wallpaper made of a background and layers on top of it. Select a video or a picture in the library and click Edit as Scene…. The app makes a scene with that video as its background and opens the editor. The original wallpaper stays as it was.
+A scene is a wallpaper made of a background and layers on top of it. Select a video or a picture in the library and click Edit as Scene… in its settings at the side. The app makes a scene with that video as its background and opens the editor. The original wallpaper stays as it was.
 
 - **Layers:** text, image, shape and code. Drag a layer right in the preview, pull its corners to resize it, and turn it by the round handle above it. A layer snaps to the middle of the screen. The arrow keys move it by 0.1%, or by 1% with Shift.
 - **Text** understands placeholders: `{HH}:{mm}` is the time, `{date}` is "October 7", `{weekday}` is the day of the week, `{year}` is the year. The full list: `{HH}` `{H}` `{hh}` `{h}` `{mm}` `{ss}` `{ampm}` `{weekday}` `{date}` `{day}` `{dd}` `{month}` `{MM}` `{year}` `{yy}`.
 - **Background:** a video, a picture or a color. Videos and pictures can be blurred and have their brightness, contrast, saturation and hue changed.
 - **Every layer** has a position, a size, a rotation, an opacity, a blending mode, a shadow and an animation: pulse, float, spin or blink.
 - **A code layer** holds any HTML, CSS and JavaScript inside the layer's box. Its script gets the variables `layer` (the layer's element) and `scene` (the whole scene).
+- **Variables.** Add Variable puts a value up for changing without the editor: a color, a number with limits, a switch, a text or a list of options. It shows in the wallpaper's settings under the title you give it, and the scene reads it by its name in code: `var(--name)` in CSS, `wallaero.variables.name` in JavaScript, `{name}` in a text layer. A change shows on the desktop at once; a script can follow it with the `wallaero:variables` event.
 - **Lock screen.** With "Use the first frame as the macOS wallpaper" on, the lock screen shows a still picture of the scene, on which a clock would be stuck at one time. Every layer has a Show on Lock Screen switch: turn it off and the layer is left out of that picture.
 - **Saving.** Changes are saved by themselves and show on the desktop at once if the scene is the current wallpaper. ⌘Z undoes, ⇧⌘Z redoes.
 
@@ -118,7 +120,7 @@ window.wallpaperRegisterAudioListener(levels => {
 
 About thirty times a second the listener gets 128 numbers from 0 to 1: 64 bands of the left channel, then 64 of the right, low notes first. The levels adjust to how loud the source is, so a quiet video moves the bars as much as a loud song does. In silence every number is 0.
 
-- **To turn it off,** go to Settings → Playback → Wallpapers react to sound. Listeners are no longer called, and a layer can go back to moving on its own.
+- **To turn it off,** go to Settings → General → Playback → Wallpapers react to sound. Listeners are no longer called, and a layer can go back to moving on its own.
 - **If you clicked Don't Allow** and the bars lie flat, open System Settings → Privacy & Security → Screen & System Audio Recording and turn WallAero Engine on under System Audio Recording Only.
 - The Mac's sound is listened to only while such a wallpaper is playing on screen: not while it is paused or covered by windows, and never for wallpapers that do not ask for it.
 - This needs macOS 14.2 or later. On older systems the listener is never called.
@@ -134,13 +136,13 @@ A folder with an `index.html` in it can be added to the library as a wallpaper: 
 ## Cursors
 
 <p align="center">
-  <img src="docs/screenshots/en/settings.png" width="500" alt="WallAero Engine settings: the Cursor section with an animated preview of the pack">
+  <img src="docs/screenshots/en/settings.png" width="900" alt="The WallAero Engine window with the settings open at its side: the Cursor section with an animated preview of the pack">
 </p>
 
 WallAero Engine applies cursor packs made for Windows — like Mousecape, but with no manual conversion: the app turns `.ani` and `.cur` files into the macOS format by itself.
 
 1. Unpack the cursor pack into a folder — it usually contains `.ani` / `.cur` files and an `install.inf`.
-2. Open Settings → Cursor → Choose Folder…. The cursors show up in the preview, already animated.
+2. Open Settings → General → Cursor → Choose Folder…. The cursors show up in the preview, already animated.
 3. Click Apply and move the mouse.
 
 If the pack has an `install.inf`, the mapping comes from it. Both common layouts are supported: one line per cursor in `[Wreg]`, and a single scheme list (`Control Panel\Cursors\Schemes`). Without an `install.inf`, cursors are matched by file name (`Normal`, `Text`, `Busy`, `Link`, `Help` and so on). One Windows cursor can replace several macOS cursors at once:

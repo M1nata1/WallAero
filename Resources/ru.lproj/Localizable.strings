@@ -148,6 +148,22 @@
 "Add Layer" = "Добавить слой";
 "Show Folder" = "Показать папку";
 "Layers" = "Слои";
+"Add Variable" = "Добавить переменную";
+"Variables" = "Переменные";
+"Variable" = "Переменная";
+"Title" = "Название";
+"Name in Code" = "Имя в коде";
+"Value" = "Значение";
+"Minimum" = "Минимум";
+"Maximum" = "Максимум";
+"Step" = "Шаг";
+"Options, One per Line" = "Варианты, по одному в строке";
+"Option" = "Вариант";
+"In Code" = "В коде";
+"Text Layer" = "Текстовый слой";
+"Number" = "Число";
+"Switch" = "Переключатель";
+"List" = "Список";
 "No layers yet" = "Слоёв пока нет";
 "Background" = "Фон";
 "Duplicate" = "Дублировать";
@@ -227,3 +243,12 @@
 "animation.spin" = "Вращение";
 "animation.blink" = "Мерцание";
 "seconds.short" = "с";
+
+/* The settings at the side of the main window */
+"settings.tab.wallpaper" = "Обои";
+"settings.tab.general" = "Общие";
+"No wallpaper selected" = "Обои не выбраны";
+"Details" = "Сведения";
+"Properties" = "Свойства";
+"Scene" = "Сцена";
+"Web Page" = "Веб-страница";

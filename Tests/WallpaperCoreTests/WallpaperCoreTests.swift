@@ -217,6 +217,33 @@ final class WallpaperLibraryTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: second.path))
     }
 
+    func testEveryWallpaperHasSettingsOfItsOwn() async throws {
+        let folder = root.appendingPathComponent("Library")
+        let library = WallpaperLibrary(rootURL: folder)
+        let first = try await library.importFile(at: TestMedia.pngFile(in: root))
+        let second = try await library.importFile(at: TestMedia.pngFile(in: root))
+        XCTAssertNil(first.settings)
+        XCTAssertEqual(first.shownSettings, Wallpaper.Settings(scaling: .fill, position: 50, speed: 1))
+
+        library.setSettings(Wallpaper.Settings(scaling: .fit, position: 20, speed: 0.5), for: first.id)
+        // What used to be one setting for all goes to those that have none of their own.
+        library.adoptSettings { _ in Wallpaper.Settings(scaling: .stretch) }
+
+        let reopened = WallpaperLibrary(rootURL: folder)
+        XCTAssertEqual(reopened.item(withID: first.id)?.shownSettings, Wallpaper.Settings(scaling: .fit, position: 20, speed: 0.5))
+        XCTAssertEqual(reopened.item(withID: second.id)?.shownSettings.scaling, .stretch)
+    }
+
+    func testALibraryWrittenBeforeSettingsExistedStillOpens() throws {
+        let old = #"[{"dateAdded":"2026-10-01T09:00:00Z","duration":6.8,"fileName":"a.mp4","fileSize":10,"hasAudio":true,"id":"09970F42-E5A6-40F3-8100-68207CA21CDF","kind":"video","name":"Old","pixelHeight":1080,"pixelWidth":1920,"sourceFormat":"MP4","thumbnailFileName":null,"wasConverted":false}]"#
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let item = try XCTUnwrap(decoder.decode([Wallpaper].self, from: Data(old.utf8)).first)
+        XCTAssertEqual(item.name, "Old")
+        XCTAssertNil(item.settings)
+        XCTAssertEqual(item.shownSettings.speed, 1)
+    }
+
     func testLibraryIsPersistedRenamedAndCleanedUp() async throws {
         let png = root.appendingPathComponent("Calm.png")
         try TestMedia.writePNG(to: png, size: CGSize(width: 64, height: 64))
@@ -521,6 +548,78 @@ final class WallpaperSceneTests: XCTestCase {
         XCTAssertTrue(text.contains("\"showsOnLockScreen\" : false"))
         // The page has to act on it, or the setting would do nothing.
         XCTAssertTrue(try String(contentsOf: root.appendingPathComponent("runtime.js"), encoding: .utf8).contains("showsOnLockScreen"))
+    }
+
+    func testVariablesSurviveBeingWrittenAndFillInWhatIsMissing() throws {
+        var color = WallpaperScene.Variable(kind: .color, title: "Цвет полос", key: "bars")
+        color.color = "#FFAA00"
+        var count = WallpaperScene.Variable(kind: .number, title: "Bars", key: "count")
+        count.number = 22
+        count.maximum = 64
+        let scene = WallpaperScene(variables: [color, count])
+        try SceneProject.write(scene, to: root)
+        XCTAssertEqual(try SceneProject.read(from: root).variables, [color, count])
+
+        // Written by hand: only what matters is there, and the key is not fit for code.
+        let json = #"{"variables": [{"kind": "toggle", "key": "show clock"}, {"kind": "nonsense"}, {"title": "no kind"}]}"#
+        try json.write(to: root.appendingPathComponent("scene.json"), atomically: true, encoding: .utf8)
+        XCTAssertEqual(try SceneProject.read(from: root).variables, [], "one bad variable loses them all, but not the scene")
+
+        let good = #"{"variables": [{"kind": "toggle", "key": "show clock"}]}"#
+        try good.write(to: root.appendingPathComponent("scene.json"), atomically: true, encoding: .utf8)
+        let read = try XCTUnwrap(SceneProject.read(from: root).variables.first)
+        XCTAssertEqual(read.key, "show_clock")
+        XCTAssertEqual(read.title, "show_clock")
+        XCTAssertTrue(read.isOn)
+    }
+
+    func testVariableKeysAreFitForCodeAndUnique() {
+        XCTAssertEqual(WallpaperScene.Variable.key(from: "цвет полос"), "cvet_polos")
+        XCTAssertEqual(WallpaperScene.Variable.key(from: "Цвет"), "Cvet", "capitals are kept")
+        XCTAssertEqual(WallpaperScene.Variable.key(from: "bar-count!"), "bar_count")
+        XCTAssertEqual(WallpaperScene.Variable.key(from: "2 colors"), "_2_colors")
+        XCTAssertEqual(WallpaperScene.Variable.key(from: "  "), "variable")
+        XCTAssertEqual(WallpaperScene.Variable.key(from: "barCount"), "barCount")
+
+        let first = WallpaperScene.Variable(kind: .color, title: "Color", key: "color")
+        let scene = WallpaperScene(variables: [first])
+        XCTAssertEqual(scene.uniqueKey("Color"), "Color", "keys tell capitals apart, as code does")
+        XCTAssertEqual(scene.uniqueKey("color"), "color2")
+        XCTAssertEqual(scene.uniqueKey("color", for: first.id), "color", "a variable does not clash with itself")
+    }
+
+    func testStoringValuesLeavesTheRestOfTheSceneAlone() throws {
+        var speed = WallpaperScene.Variable(kind: .number, title: "Speed", key: "speed")
+        speed.number = 1
+        let label = WallpaperScene.Variable(kind: .text, title: "Label", key: "label")
+        try SceneProject.write(WallpaperScene(layers: [.init(kind: .text, name: "Clock")], variables: [speed, label]), to: root)
+
+        // Meanwhile the scene is edited: a layer is added, a variable renamed, another removed.
+        var edited = try SceneProject.read(from: root)
+        edited.layers.append(.init(kind: .shape, name: "Box"))
+        edited.variables[0].title = "Tempo"
+        edited.variables.remove(at: 1)
+        try SceneProject.write(edited, to: root)
+
+        // The settings still hold the scene as it was, with new values.
+        var fromSettings = speed
+        fromSettings.number = 3
+        var gone = label
+        gone.text = "hello"
+        let stored = try SceneProject.storeValues(of: [fromSettings, gone], in: root)
+
+        XCTAssertEqual(stored.layers.map(\.name), ["Clock", "Box"])
+        XCTAssertEqual(stored.variables.map(\.title), ["Tempo"])
+        XCTAssertEqual(stored.variables[0].number, 3)
+        XCTAssertEqual(try SceneProject.read(from: root), stored)
+
+        // How the background fills the screen is stored only when it is given.
+        XCTAssertEqual(stored.background.fit, .cover)
+        let framed = try SceneProject.storeValues(of: [], framing: (fit: .contain, position: 80), in: root)
+        XCTAssertEqual(framed.background.fit, .contain)
+        XCTAssertEqual(framed.background.position, 80)
+        XCTAssertEqual(framed.variables[0].number, 3, "the variables stay as they were")
+        XCTAssertEqual(try SceneProject.storeValues(of: [], in: root).background.position, 80)
     }
 
     func testGeneratedFilesAreRefreshedButCustomOnesAreKept() throws {

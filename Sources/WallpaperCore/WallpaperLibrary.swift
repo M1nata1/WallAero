@@ -238,6 +238,28 @@ public final class WallpaperLibrary: ObservableObject {
         return total
     }
 
+    /// Stores how a wallpaper is shown. Nothing is written if that is how it is shown already.
+    public func setSettings(_ settings: Wallpaper.Settings, for id: UUID) {
+        guard let index = items.firstIndex(where: { $0.id == id }), items[index].settings != settings else { return }
+        items[index].settings = settings
+        save()
+    }
+
+    /// Gives the wallpapers that have no settings of their own yet the ones returned for them;
+    /// nil leaves a wallpaper as it is.
+    public func adoptSettings(_ settings: (Wallpaper) -> Wallpaper.Settings?) {
+        var changed = false
+        for index in items.indices where items[index].settings == nil {
+            if let adopted = settings(items[index]) {
+                items[index].settings = adopted
+                changed = true
+            }
+        }
+        if changed {
+            save()
+        }
+    }
+
     public func rename(_ id: UUID, to name: String) {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, let index = items.firstIndex(where: { $0.id == id }) else { return }

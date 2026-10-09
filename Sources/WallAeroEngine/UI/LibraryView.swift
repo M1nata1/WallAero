@@ -4,23 +4,62 @@ import WallpaperCore
 
 struct LibraryActions {
     var addFiles: () -> Void
-    var openSettings: () -> Void
-    /// Opens the scene editor for a scene of the library.
-    var editScene: (Wallpaper) -> Void = { _ in }
+    /// Shows the settings at the side of the window, or hides them.
+    var toggleSettings: () -> Void
+    /// Opens a wallpaper in the scene editor; a video or a picture becomes a scene first.
+    var edit: (Wallpaper) -> Void = { _ in }
+}
+
+extension WallpaperLibrary {
+    /// Scenes open in the editor, and a video or picture can become one. Other web wallpapers
+    /// are someone else's pages and are shown as they are.
+    func canEdit(_ item: Wallpaper) -> Bool {
+        item.kind != .web || isScene(item)
+    }
+
+    func editTitle(for item: Wallpaper) -> LocalizedStringKey {
+        item.kind == .web ? "Edit…" : "Edit as Scene…"
+    }
+}
+
+/// The app's main window: the library, with the settings at its side when they are asked for.
+struct MainView: View {
+    @EnvironmentObject private var state: MainWindowState
+    let actions: LibraryActions
+
+    var body: some View {
+        HStack(spacing: 0) {
+            LibraryView(actions: actions)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            if state.showsSettings {
+                Divider()
+                SettingsPanel(edit: actions.edit)
+            }
+        }
+    }
 }
 
 struct LibraryView: View {
+    /// The least room the library needs, in points.
+    static let minimumSize = CGSize(width: 640, height: 440)
+
     @EnvironmentObject private var library: WallpaperLibrary
     @EnvironmentObject private var manager: WallpaperManager
     @EnvironmentObject private var importer: ImportCoordinator
+    @EnvironmentObject private var state: MainWindowState
     let actions: LibraryActions
 
     @State private var target: DisplayTarget = .all
-    @State private var selection: UUID?
     @State private var isDropTargeted = false
     @State private var renamingItem: Wallpaper?
     @State private var newName = ""
     @State private var deletingItem: Wallpaper?
+
+    /// Kept in the window's state: the settings at the side are for the selected wallpaper.
+    private var selection: UUID? {
+        get { state.selection }
+        nonmutating set { state.selection = newValue }
+    }
 
     private var selectedItem: Wallpaper? { selection.flatMap(library.item(withID:)) }
     private var currentID: UUID? { manager.wallpaperID(for: target) }
@@ -45,7 +84,7 @@ struct LibraryView: View {
             Divider()
             footer
         }
-        .frame(minWidth: 640, minHeight: 440)
+        .frame(minWidth: Self.minimumSize.width, minHeight: Self.minimumSize.height)
         .onChange(of: importer.lastImportedID) { id in
             if let id {
                 selection = id
@@ -105,9 +144,11 @@ struct LibraryView: View {
             Button(action: actions.addFiles) {
                 Label("Add…", systemImage: "plus")
             }
-            Button(action: actions.openSettings) {
+            // Stays pressed while the settings are open.
+            Toggle(isOn: Binding(get: { state.showsSettings }, set: { _ in actions.toggleSettings() })) {
                 Label("Settings", systemImage: "gearshape")
             }
+            .toggleStyle(.button)
             .labelStyle(.iconOnly)
             .help("Settings")
         }
@@ -153,8 +194,8 @@ struct LibraryView: View {
                 }
             }
         }
-        if canEdit(item) {
-            Button(editTitle(for: item)) { edit(item) }
+        if library.canEdit(item) {
+            Button(library.editTitle(for: item)) { actions.edit(item) }
         }
         Divider()
         Button("Rename…") {
@@ -194,9 +235,6 @@ struct LibraryView: View {
             if currentID != nil {
                 Button("Turn Off") { manager.setWallpaper(nil, for: target) }
             }
-            if let item = selectedItem, canEdit(item) {
-                Button(editTitle(for: item)) { edit(item) }
-            }
             Button("Set as Wallpaper") {
                 if let item = selectedItem {
                     apply(item)
@@ -223,31 +261,6 @@ struct LibraryView: View {
     private func apply(_ item: Wallpaper) {
         selection = item.id
         manager.setWallpaper(item.id, for: target)
-    }
-
-    /// Scenes open in the editor; a video or picture first becomes a scene with itself as the
-    /// background. Other web wallpapers are someone else's pages and are shown as they are.
-    private func canEdit(_ item: Wallpaper) -> Bool {
-        item.kind != .web || library.isScene(item)
-    }
-
-    private func editTitle(for item: Wallpaper) -> LocalizedStringKey {
-        item.kind == .web ? "Edit…" : "Edit as Scene…"
-    }
-
-    private func edit(_ item: Wallpaper) {
-        if item.kind == .web {
-            actions.editScene(item)
-            return
-        }
-        do {
-            let name = String(format: NSLocalizedString("%@ (scene)", comment: "Name of a scene made from a wallpaper"), item.name)
-            let scene = try library.makeScene(from: item, named: name)
-            selection = scene.id
-            actions.editScene(scene)
-        } catch {
-            NSAlert(error: error).runModal()
-        }
     }
 
     private func delete(_ item: Wallpaper) {

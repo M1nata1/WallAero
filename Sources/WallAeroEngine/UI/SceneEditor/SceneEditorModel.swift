@@ -15,11 +15,12 @@ final class SceneEditorModel: ObservableObject {
     @Published var scene: WallpaperScene {
         didSet { sceneDidChange(from: oldValue) }
     }
-    /// The selected layer; nil means the background.
+    /// The selected layer or variable; nil means the background.
     @Published var selection: UUID? {
         didSet {
             if selection != oldValue {
-                preview?.select(selection)
+                // Only layers are there to be marked in the preview.
+                preview?.select(selectedLayer?.id)
             }
         }
     }
@@ -65,7 +66,8 @@ final class SceneEditorModel: ObservableObject {
         }
         canUndo = !undoStack.isEmpty
         canRedo = !redoStack.isEmpty
-        if let selection, !scene.layers.contains(where: { $0.id == selection }) {
+        if let selection, !scene.layers.contains(where: { $0.id == selection }),
+           !scene.variables.contains(where: { $0.id == selection }) {
             self.selection = nil
         }
         if !changeComesFromPreview {
@@ -241,6 +243,74 @@ final class SceneEditorModel: ObservableObject {
         case .image: return "photo"
         case .shape: return "square.on.circle"
         case .code: return "chevron.left.forwardslash.chevron.right"
+        }
+    }
+
+    // MARK: - Variables
+
+    /// A binding to one variable, for the inspector. Writes are dropped once the variable is gone.
+    func variableBinding(for id: UUID) -> Binding<WallpaperScene.Variable>? {
+        guard let variable = scene.variables.first(where: { $0.id == id }) else { return nil }
+        return Binding(
+            get: { [weak self] in self?.scene.variables.first { $0.id == id } ?? variable },
+            set: { [weak self] value in
+                guard let self, let index = self.scene.variables.firstIndex(where: { $0.id == id }) else { return }
+                self.scene.variables[index] = value
+            }
+        )
+    }
+
+    func addVariable(_ kind: WallpaperScene.Variable.Kind) {
+        let titles = Set(scene.variables.map(\.title))
+        var title = Self.defaultTitle(for: kind)
+        var number = 2
+        while titles.contains(title) {
+            title = "\(Self.defaultTitle(for: kind)) \(number)"
+            number += 1
+        }
+        var variable = WallpaperScene.Variable(kind: kind, title: title, key: scene.uniqueKey(title.lowercased()))
+        if kind == .choice {
+            let option = NSLocalizedString("Option", comment: "Default name of a choice's option")
+            variable.options = ["\(option) 1", "\(option) 2"]
+            variable.text = variable.options[0]
+        }
+        endGesture()
+        scene.variables.append(variable)
+        selection = variable.id
+        endGesture()
+    }
+
+    /// Deletes the layer or the variable with this identifier.
+    func delete(_ id: UUID) {
+        endGesture()
+        scene.layers.removeAll { $0.id == id }
+        scene.variables.removeAll { $0.id == id }
+        endGesture()
+    }
+
+    func moveVariables(fromOffsets source: IndexSet, toOffset destination: Int) {
+        endGesture()
+        scene.variables.move(fromOffsets: source, toOffset: destination)
+        endGesture()
+    }
+
+    static func defaultTitle(for kind: WallpaperScene.Variable.Kind) -> String {
+        switch kind {
+        case .color: return NSLocalizedString("Color", comment: "Variable kind")
+        case .number: return NSLocalizedString("Number", comment: "Variable kind")
+        case .toggle: return NSLocalizedString("Switch", comment: "Variable kind")
+        case .text: return NSLocalizedString("Text", comment: "Variable kind")
+        case .choice: return NSLocalizedString("List", comment: "Variable kind")
+        }
+    }
+
+    static func symbol(for kind: WallpaperScene.Variable.Kind) -> String {
+        switch kind {
+        case .color: return "paintpalette"
+        case .number: return "slider.horizontal.3"
+        case .toggle: return "switch.2"
+        case .text: return "character.cursor.ibeam"
+        case .choice: return "list.bullet"
         }
     }
 

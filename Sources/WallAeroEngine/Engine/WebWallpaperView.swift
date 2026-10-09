@@ -188,8 +188,9 @@ final class WebWallpaperView: NSView, WKNavigationDelegate {
         webView?.evaluateJavaScript("window.__wallaeroHost && window.__wallaeroHost.apply(\(hostSettingsJSON))")
     }
 
+    /// What the page's media is to do: `playing` is false while the wallpaper is paused.
     private var hostSettingsJSON: String {
-        "{rate: \(rate), muted: \(isMuted), volume: \(max(0, min(1, volume)))}"
+        "{rate: \(rate), muted: \(isMuted), volume: \(max(0, min(1, volume))), playing: \(!isFrozen)}"
     }
 
     private func applyPlaying() {
@@ -199,6 +200,7 @@ final class WebWallpaperView: NSView, WKNavigationDelegate {
             freezeGeneration += 1
             let generation = freezeGeneration
             webView.isHidden = false
+            applyHostSettings() // lets the videos run again
             // The page takes a moment to draw again; the still covers it until then.
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
                 guard let self, self.freezeGeneration == generation else { return }
@@ -209,6 +211,7 @@ final class WebWallpaperView: NSView, WKNavigationDelegate {
             isFrozen = true
             freezeGeneration += 1
             let generation = freezeGeneration
+            applyHostSettings() // stands the videos still; hiding the page does not always
             webView.takeSnapshot(with: nil) { [weak self] image, _ in
                 guard let self, self.freezeGeneration == generation else { return }
                 self.stillView.image = image
@@ -315,9 +318,15 @@ final class WebWallpaperView: NSView, WKNavigationDelegate {
       var host = __HOST_SETTINGS__;
       function applyTo(media) {
         if (!(media instanceof HTMLMediaElement)) return;
-        if (media.playbackRate !== host.rate) {
-          media.defaultPlaybackRate = host.rate;
-          media.playbackRate = host.rate;
+        // A paused wallpaper's videos stand still at speed zero. Hiding the page stops its
+        // scripts and animations, but a video goes on playing, unseen, if the window was covered
+        // already when the page was hidden — as it is whenever windows over the desktop are why
+        // the wallpaper pauses. Speed zero rather than a pause: a paused video in a hidden page
+        // is dropped by the web engine and starts from its beginning afterwards.
+        var rate = host.playing === false ? 0 : host.rate;
+        if (media.playbackRate !== rate) {
+          if (rate > 0) media.defaultPlaybackRate = rate;
+          media.playbackRate = rate;
         }
         if (media.muted !== host.muted) media.muted = host.muted;
         if (media.volume !== host.volume) media.volume = host.volume;
@@ -352,7 +361,7 @@ final class WebWallpaperView: NSView, WKNavigationDelegate {
         for (var i = 0; i < all.length; i++) applyTo(all[i]);
       }
       // Media events do not bubble, but they can be caught on the way down.
-      ['loadstart', 'loadedmetadata', 'play'].forEach(function (name) {
+      ['loadstart', 'loadedmetadata', 'play', 'ratechange'].forEach(function (name) {
         document.addEventListener(name, function (event) { applyTo(event.target); }, true);
       });
       window.__wallaeroHost = {

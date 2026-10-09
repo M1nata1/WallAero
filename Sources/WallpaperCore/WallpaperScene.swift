@@ -12,11 +12,14 @@ public struct WallpaperScene: Codable, Equatable, Sendable {
     public var version: Int
     public var background: Background
     public var layers: [Layer]
+    /// What the scene lets be changed without the editor, see `Variable`.
+    public var variables: [Variable]
 
-    public init(background: Background = Background(), layers: [Layer] = []) {
+    public init(background: Background = Background(), layers: [Layer] = [], variables: [Variable] = []) {
         version = Self.currentVersion
         self.background = background
         self.layers = layers
+        self.variables = variables
     }
 
     public init(from decoder: Decoder) throws {
@@ -24,6 +27,19 @@ public struct WallpaperScene: Codable, Equatable, Sendable {
         version = values.value(.version, or: Self.currentVersion)
         background = values.value(.background, or: Background())
         layers = values.value(.layers, or: [])
+        variables = values.value(.variables, or: [])
+    }
+
+    /// A key no other variable of the scene has: the wanted one, or it with a number added.
+    public func uniqueKey(_ wanted: String, for id: UUID? = nil) -> String {
+        let base = Variable.key(from: wanted)
+        let taken = Set(variables.filter { $0.id != id }.map(\.key))
+        guard taken.contains(base) else { return base }
+        var number = 2
+        while taken.contains("\(base)\(number)") {
+            number += 1
+        }
+        return "\(base)\(number)"
     }
 
     // MARK: - Background
@@ -48,6 +64,9 @@ public struct WallpaperScene: Codable, Equatable, Sendable {
         /// Shown behind the media and wherever it does not reach.
         public var color: String
         public var fit: Fit
+        /// Which part stays in view when covering the screen crops the media, in percent:
+        /// 0 keeps the left or the top, 100 the right or the bottom.
+        public var position: Double
         /// In pixels of a 1080-pixel-high screen.
         public var blur: Double
         /// Percent; 100 leaves the picture as it is.
@@ -58,12 +77,13 @@ public struct WallpaperScene: Codable, Equatable, Sendable {
         public var hue: Double
 
         public init(kind: Kind = .color, source: String? = nil, color: String = "#000000", fit: Fit = .cover,
-                    blur: Double = 0, brightness: Double = 100, contrast: Double = 100, saturation: Double = 100,
-                    hue: Double = 0) {
+                    position: Double = 50, blur: Double = 0, brightness: Double = 100, contrast: Double = 100,
+                    saturation: Double = 100, hue: Double = 0) {
             self.kind = kind
             self.source = source
             self.color = color
             self.fit = fit
+            self.position = position
             self.blur = blur
             self.brightness = brightness
             self.contrast = contrast
@@ -78,6 +98,7 @@ public struct WallpaperScene: Codable, Equatable, Sendable {
             source = try? values.decodeIfPresent(String.self, forKey: .source)
             color = values.value(.color, or: defaults.color)
             fit = values.value(.fit, or: defaults.fit)
+            position = values.value(.position, or: defaults.position)
             blur = values.value(.blur, or: defaults.blur)
             brightness = values.value(.brightness, or: defaults.brightness)
             contrast = values.value(.contrast, or: defaults.contrast)
@@ -235,6 +256,93 @@ public struct WallpaperScene: Codable, Equatable, Sendable {
             html = values.value(.html, or: defaults.html)
             css = values.value(.css, or: defaults.css)
             javaScript = values.value(.javaScript, or: defaults.javaScript)
+        }
+    }
+}
+
+extension WallpaperScene {
+    /// A value the scene's author has put up for changing without the editor. It shows in the
+    /// wallpaper's settings under its title, and the scene reads it by its key: `var(--key)` in
+    /// CSS, `wallaero.variables.key` in JavaScript, `{key}` in the text of a text layer.
+    public struct Variable: Codable, Equatable, Identifiable, Sendable {
+        public enum Kind: String, Codable, CaseIterable, Sendable {
+            case color, number, toggle, text, choice
+        }
+
+        public var id: UUID
+        public var kind: Kind
+        /// What the setting is called in the wallpaper's settings.
+        public var title: String
+        /// The name the scene's code knows it by: letters, digits and underscores.
+        public var key: String
+
+        // The value is in the field of the variable's kind; the others are ignored.
+        public var color: String
+        public var number: Double
+        public var minimum: Double
+        public var maximum: Double
+        public var step: Double
+        public var isOn: Bool
+        /// The text, or the chosen one of `options` for a choice.
+        public var text: String
+        public var options: [String]
+
+        public init(kind: Kind, title: String, key: String, id: UUID = UUID()) {
+            self.id = id
+            self.kind = kind
+            self.title = title
+            self.key = key
+            color = "#FFFFFF"
+            number = 50
+            minimum = 0
+            maximum = 100
+            step = 1
+            isOn = true
+            text = ""
+            options = []
+        }
+
+        public init(from decoder: Decoder) throws {
+            let values = try decoder.container(keyedBy: CodingKeys.self)
+            let kind = try values.decode(Kind.self, forKey: .kind)
+            let defaults = Variable(kind: kind, title: "", key: "variable")
+            id = values.value(.id, or: defaults.id)
+            self.kind = kind
+            key = Self.key(from: values.value(.key, or: defaults.key))
+            title = values.value(.title, or: key)
+            color = values.value(.color, or: defaults.color)
+            number = values.value(.number, or: defaults.number)
+            minimum = values.value(.minimum, or: defaults.minimum)
+            maximum = values.value(.maximum, or: defaults.maximum)
+            step = values.value(.step, or: defaults.step)
+            isOn = values.value(.isOn, or: defaults.isOn)
+            text = values.value(.text, or: defaults.text)
+            options = values.value(.options, or: defaults.options)
+        }
+
+        /// Any text made into a key that CSS, JavaScript and a text layer all accept: Latin
+        /// letters, digits and underscores, not starting with a digit. "цвет полос" becomes
+        /// "cvet_polos".
+        public static func key(from text: String) -> String {
+            let latin = text.applyingTransform(.toLatin, reverse: false)?
+                .applyingTransform(.stripDiacritics, reverse: false) ?? text
+            var key = ""
+            for scalar in latin.unicodeScalars {
+                let isLetter = ("a"..."z").contains(scalar) || ("A"..."Z").contains(scalar)
+                let isDigit = ("0"..."9").contains(scalar)
+                if isLetter || isDigit || scalar == "_" {
+                    key.unicodeScalars.append(scalar)
+                } else if !key.isEmpty, !key.hasSuffix("_") {
+                    key.append("_")
+                }
+            }
+            while key.hasSuffix("_") {
+                key.removeLast()
+            }
+            if key.isEmpty {
+                return "variable"
+            }
+            return key.first!.isNumber ? "_" + key : key
         }
     }
 }
