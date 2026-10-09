@@ -79,7 +79,7 @@ enum ScreenshotMode {
             await shoot(AnyView(mainView), title: "WallAero Engine", size: NSSize(width: 1180, height: 700),
                         to: directory.appendingPathComponent("library.png"))
             state.settingsTab = secondTab
-            await shoot(AnyView(mainView), title: "WallAero Engine", size: NSSize(width: 1100, height: 760),
+            await shoot(AnyView(mainView), title: "WallAero Engine", size: NSSize(width: 1180, height: 760),
                         to: directory.appendingPathComponent("settings.png")) { window in
                 if showsEnd {
                     scrollSettingsToEnd(in: window)

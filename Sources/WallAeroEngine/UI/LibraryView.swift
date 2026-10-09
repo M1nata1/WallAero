@@ -70,6 +70,9 @@ struct SettingsToggle: View {
 struct LibraryView: View {
     /// The least room the library needs, in points.
     static let minimumSize = CGSize(width: 640, height: 440)
+    /// How wide a wallpaper's picture is. It is the same at any width of the library: showing
+    /// and hiding the settings changes how many fit in a row, never their size.
+    static let tileWidth: CGFloat = 216
 
     @EnvironmentObject private var library: WallpaperLibrary
     @EnvironmentObject private var manager: WallpaperManager
@@ -226,7 +229,8 @@ struct LibraryView: View {
             EmptyLibraryView(addFiles: actions.addFiles)
         } else {
             ScrollView {
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 190, maximum: 260), spacing: 16)], spacing: 20) {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: Self.tileWidth, maximum: Self.tileWidth), spacing: 16)],
+                          alignment: .leading, spacing: 20) {
                     ForEach(library.items) { item in
                         WallpaperTile(
                             item: item,
