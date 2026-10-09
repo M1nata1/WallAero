@@ -4,8 +4,6 @@ import WallpaperCore
 
 struct LibraryActions {
     var addFiles: () -> Void
-    /// Shows the settings at the side of the window, or hides them.
-    var toggleSettings: () -> Void
     /// Opens a wallpaper in the scene editor; a video or a picture becomes a scene first.
     var edit: (Wallpaper) -> Void = { _ in }
 }
@@ -28,14 +26,44 @@ struct MainView: View {
     let actions: LibraryActions
 
     var body: some View {
-        HStack(spacing: 0) {
+        if #available(macOS 14.0, *) {
+            // The system's own side panel: it looks the way the Mac's version of macOS has them.
             LibraryView(actions: actions)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            if state.showsSettings {
-                Divider()
-                SettingsPanel(edit: actions.edit)
+                .inspector(isPresented: $state.showsSettings) {
+                    SettingsPanel(edit: actions.edit)
+                        .inspectorColumnWidth(MainWindowState.settingsWidth)
+                        .toolbar {
+                            Spacer()
+                            SettingsToggle(isOn: $state.showsSettings)
+                        }
+                }
+        } else {
+            HStack(spacing: 0) {
+                LibraryView(actions: actions)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                if state.showsSettings {
+                    Divider()
+                    SettingsPanel(edit: actions.edit)
+                        .frame(width: MainWindowState.settingsWidth)
+                        .background(Color(nsColor: .windowBackgroundColor))
+                }
             }
         }
+    }
+}
+
+/// The button that shows the settings at the side of the window; it stays pressed while they
+/// are open.
+struct SettingsToggle: View {
+    @Binding var isOn: Bool
+
+    var body: some View {
+        Toggle(isOn: $isOn) {
+            Label("Settings", systemImage: "gearshape")
+        }
+        .toggleStyle(.button)
+        .labelStyle(.iconOnly)
+        .help("Settings")
     }
 }
 
@@ -65,54 +93,82 @@ struct LibraryView: View {
     private var currentID: UUID? { manager.wallpaperID(for: target) }
 
     var body: some View {
-        VStack(spacing: 0) {
-            header
-            Divider()
-            content
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .overlay {
-                    if isDropTargeted {
-                        DropHighlight()
+        layout
+            .frame(minWidth: Self.minimumSize.width, minHeight: Self.minimumSize.height)
+            .onChange(of: importer.lastImportedID) { id in
+                if let id {
+                    selection = id
+                }
+            }
+            .onChange(of: manager.displays) { displays in
+                if case .display(let id) = target, !displays.contains(where: { $0.id == id }) {
+                    target = .all
+                }
+            }
+            .alert("Rename Wallpaper", isPresented: isRenaming) {
+                TextField("Name", text: $newName)
+                Button("Rename") {
+                    if let item = renamingItem {
+                        library.rename(item.id, to: newName)
                     }
                 }
-                .onDrop(of: [.fileURL], isTargeted: $isDropTargeted) { providers in
-                    Task {
-                        importer.importFiles(await Self.fileURLs(from: providers), applyWhenDone: false)
+                Button("Cancel", role: .cancel) {}
+            }
+            .confirmationDialog(deletionTitle, isPresented: isDeleting, titleVisibility: .visible) {
+                Button("Delete", role: .destructive) {
+                    if let item = deletingItem {
+                        delete(item)
                     }
-                    return true
                 }
-            Divider()
-            footer
-        }
-        .frame(minWidth: Self.minimumSize.width, minHeight: Self.minimumSize.height)
-        .onChange(of: importer.lastImportedID) { id in
-            if let id {
-                selection = id
+            } message: {
+                Text("The wallpaper will be removed from the library. The original file is not affected.")
+            }
+    }
+
+    // MARK: - Layout
+
+    /// The buttons are the window's toolbar where the system takes one from the content
+    /// (macOS 14); before that they are a line at the top of the window.
+    @ViewBuilder
+    private var layout: some View {
+        if #available(macOS 14.0, *) {
+            droppable
+                .bottomBar { footer }
+                .toolbar {
+                    if manager.displays.count > 1 {
+                        ToolbarItem(placement: .navigation) { displayPicker }
+                    }
+                    ToolbarItemGroup(placement: .primaryAction) {
+                        pauseButton
+                        addButton
+                    }
+                }
+        } else {
+            VStack(spacing: 0) {
+                header
+                Divider()
+                droppable
+                Divider()
+                footer
             }
         }
-        .onChange(of: manager.displays) { displays in
-            if case .display(let id) = target, !displays.contains(where: { $0.id == id }) {
-                target = .all
-            }
-        }
-        .alert("Rename Wallpaper", isPresented: isRenaming) {
-            TextField("Name", text: $newName)
-            Button("Rename") {
-                if let item = renamingItem {
-                    library.rename(item.id, to: newName)
+    }
+
+    /// The wallpapers, taking files dropped on them.
+    private var droppable: some View {
+        content
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .overlay {
+                if isDropTargeted {
+                    DropHighlight()
                 }
             }
-            Button("Cancel", role: .cancel) {}
-        }
-        .confirmationDialog(deletionTitle, isPresented: isDeleting, titleVisibility: .visible) {
-            Button("Delete", role: .destructive) {
-                if let item = deletingItem {
-                    delete(item)
+            .onDrop(of: [.fileURL], isTargeted: $isDropTargeted) { providers in
+                Task {
+                    importer.importFiles(await Self.fileURLs(from: providers), applyWhenDone: false)
                 }
+                return true
             }
-        } message: {
-            Text("The wallpaper will be removed from the library. The original file is not affected.")
-        }
     }
 
     // MARK: - Header
@@ -120,40 +176,46 @@ struct LibraryView: View {
     private var header: some View {
         HStack(spacing: 10) {
             if manager.displays.count > 1 {
-                Picker("Display:", selection: $target) {
-                    Text("All Displays").tag(DisplayTarget.all)
-                    Divider()
-                    ForEach(manager.displays) { display in
-                        Text(display.name).tag(DisplayTarget.display(display.id))
-                    }
-                }
-                .pickerStyle(.menu)
-                .fixedSize()
+                displayPicker
             }
             Spacer()
-            Button {
-                manager.isPausedByUser.toggle()
-            } label: {
-                if manager.isPausedByUser {
-                    Label("Resume", systemImage: "play.fill")
-                } else {
-                    Label("Pause", systemImage: "pause.fill")
-                }
-            }
-            .disabled(!manager.hasWallpaper)
-            Button(action: actions.addFiles) {
-                Label("Add…", systemImage: "plus")
-            }
-            // Stays pressed while the settings are open.
-            Toggle(isOn: Binding(get: { state.showsSettings }, set: { _ in actions.toggleSettings() })) {
-                Label("Settings", systemImage: "gearshape")
-            }
-            .toggleStyle(.button)
-            .labelStyle(.iconOnly)
-            .help("Settings")
+            pauseButton
+            addButton
+            SettingsToggle(isOn: $state.showsSettings)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
+    }
+
+    private var displayPicker: some View {
+        Picker("Display:", selection: $target) {
+            Text("All Displays").tag(DisplayTarget.all)
+            Divider()
+            ForEach(manager.displays) { display in
+                Text(display.name).tag(DisplayTarget.display(display.id))
+            }
+        }
+        .pickerStyle(.menu)
+        .fixedSize()
+    }
+
+    private var pauseButton: some View {
+        let (title, symbol): (LocalizedStringKey, String) = manager.isPausedByUser ? ("Resume", "play.fill") : ("Pause", "pause.fill")
+        return Button {
+            manager.isPausedByUser.toggle()
+        } label: {
+            Label(title, systemImage: symbol)
+        }
+        .disabled(!manager.hasWallpaper)
+        // In the toolbar the buttons are pictures only; their names show when the pointer rests.
+        .help(title)
+    }
+
+    private var addButton: some View {
+        Button(action: actions.addFiles) {
+            Label("Add…", systemImage: "plus")
+        }
+        .help("Add…")
     }
 
     // MARK: - Grid
@@ -231,9 +293,11 @@ struct LibraryView: View {
             Spacer(minLength: 12)
             if case .display(let displayID) = target, manager.hasOwnWallpaper(displayID) {
                 Button("Same as All Displays") { manager.followAllDisplays(displayID) }
+                    .barButtonStyle()
             }
             if currentID != nil {
                 Button("Turn Off") { manager.setWallpaper(nil, for: target) }
+                    .barButtonStyle()
             }
             Button("Set as Wallpaper") {
                 if let item = selectedItem {
@@ -241,6 +305,7 @@ struct LibraryView: View {
                 }
             }
             .keyboardShortcut(.defaultAction)
+            .barButtonStyle(isMainAction: true)
             .disabled(selectedItem == nil || selectedItem?.id == currentID)
         }
         .padding(.horizontal, 16)
@@ -339,7 +404,7 @@ struct WallpaperTile: View {
                         .foregroundStyle(.secondary)
                 }
             }
-            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: SystemLook.tileCornerRadius, style: .continuous))
             .overlay(alignment: .topLeading) {
                 HStack(spacing: 4) {
                     Text(item.sourceFormat)
@@ -366,7 +431,7 @@ struct WallpaperTile: View {
                 }
             }
             .overlay {
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                RoundedRectangle(cornerRadius: SystemLook.tileCornerRadius, style: .continuous)
                     .strokeBorder(
                         isSelected ? Color.accentColor : Color.primary.opacity(0.12),
                         lineWidth: isSelected ? 3 : 1
@@ -396,7 +461,7 @@ struct EmptyLibraryView: View {
         .padding(40)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background {
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
+            RoundedRectangle(cornerRadius: SystemLook.frameCornerRadius, style: .continuous)
                 .strokeBorder(Color.secondary.opacity(0.35), style: StrokeStyle(lineWidth: 2, dash: [8, 6]))
                 .padding(20)
         }
@@ -405,10 +470,10 @@ struct EmptyLibraryView: View {
 
 struct DropHighlight: View {
     var body: some View {
-        RoundedRectangle(cornerRadius: 14, style: .continuous)
+        RoundedRectangle(cornerRadius: SystemLook.frameCornerRadius - 4, style: .continuous)
             .fill(Color.accentColor.opacity(0.08))
             .overlay {
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                RoundedRectangle(cornerRadius: SystemLook.frameCornerRadius - 4, style: .continuous)
                     .strokeBorder(Color.accentColor, lineWidth: 3)
             }
             .overlay {

@@ -18,6 +18,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var urlsOpenedBeforeLaunch: [URL] = []
 
     static func main() {
+        DevelopmentRun.prepare()
         let app = NSApplication.shared
         if let request = ScreenshotMode.renderRequest {
             // A developer's helper that needs neither the library nor the rest of the app.
@@ -73,7 +74,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             AnyView(
                 MainView(actions: LibraryActions(
                     addFiles: { [unowned self] in addWallpapers(nil) },
-                    toggleSettings: { [unowned self] in windows.setSettingsShown(!windows.state.showsSettings) },
                     edit: { [unowned self] item in edit(item) }
                 ))
                 .environmentObject(library)
@@ -254,8 +254,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func makeMainMenu() -> NSMenu {
         let appMenu = NSMenu()
         appMenu.addItem(withTitle: NSLocalizedString("About WallAero Engine", comment: "Menu item"), action: #selector(showAbout(_:)), keyEquivalent: "")
+            .setSymbol("info.circle")
         appMenu.addItem(.separator())
         appMenu.addItem(withTitle: NSLocalizedString("Settings…", comment: "Menu item"), action: #selector(showSettings(_:)), keyEquivalent: ",")
+            .setSymbol("gearshape")
         appMenu.addItem(.separator())
         appMenu.addItem(withTitle: NSLocalizedString("Hide WallAero Engine", comment: "Menu item"), action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
         appMenu.addItem(withTitle: NSLocalizedString("Hide Others", comment: "Menu item"), action: #selector(NSApplication.hideOtherApplications(_:)), keyEquivalent: "h")
@@ -266,7 +268,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let fileMenu = NSMenu(title: NSLocalizedString("File", comment: "Menu title"))
         fileMenu.addItem(withTitle: NSLocalizedString("Add Wallpapers…", comment: "Menu item"), action: #selector(addWallpapers(_:)), keyEquivalent: "o")
+            .setSymbol("plus")
         fileMenu.addItem(withTitle: NSLocalizedString("Open Library…", comment: "Menu item"), action: #selector(showLibrary(_:)), keyEquivalent: "l")
+            .setSymbol("square.grid.2x2")
         fileMenu.addItem(.separator())
         fileMenu.addItem(withTitle: NSLocalizedString("Close Window", comment: "Menu item"), action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
 

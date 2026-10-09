@@ -24,9 +24,7 @@ struct SettingsPanel: View {
             case .general: SettingsView()
             }
         }
-        .frame(width: MainWindowState.settingsWidth)
         .frame(maxHeight: .infinity)
-        .background(Color(nsColor: .windowBackgroundColor))
     }
 }
 

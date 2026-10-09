@@ -45,12 +45,17 @@ final class MainWindowState: ObservableObject {
 final class WindowManager: NSObject, NSWindowDelegate {
     /// The main window: the library, and the settings at its side.
     private(set) var libraryWindow: NSWindow?
-    let state = MainWindowState()
+    let state: MainWindowState
     /// One editor per scene, and what to do when it closes.
     private var editors: [UUID: (window: NSWindow, onClose: () -> Void)] = [:]
     private let makeMainView: () -> AnyView
+    private let remembersFrames: Bool
 
-    init(main: @escaping () -> AnyView) {
+    /// - Parameter remembersFrames: whether windows open where they were closed. The screenshot
+    ///   helper, next to the copy in use, neither reads nor writes that.
+    init(state: MainWindowState? = nil, remembersFrames: Bool = true, main: @escaping () -> AnyView) {
+        self.state = state ?? MainWindowState()
+        self.remembersFrames = remembersFrames
         makeMainView = main
     }
 
@@ -93,25 +98,7 @@ final class WindowManager: NSObject, NSWindowDelegate {
     func showSettings() {
         showLibrary()
         state.settingsTab = .general
-        setSettingsShown(true)
-    }
-
-    /// Shows the settings at the side of the main window, or hides them. The window grows by
-    /// their width, so the library keeps its size as far as the screen allows, and gives the
-    /// width back when they are hidden.
-    func setSettingsShown(_ shown: Bool) {
-        guard shown != state.showsSettings else { return }
-        state.showsSettings = shown
-        guard let window = libraryWindow else { return }
-        let change = MainWindowState.settingsWidth + 1 // and the line between the two
-        var frame = window.frame
-        frame.size.width = shown ? frame.width + change : max(frame.width - change, LibraryView.minimumSize.width)
-        if let screen = window.screen?.visibleFrame {
-            frame.size.width = min(frame.width, screen.width)
-            // Growing to the right as long as there is room there, then to the left.
-            frame.origin.x = max(screen.minX, min(frame.origin.x, screen.maxX - frame.width))
-        }
-        window.setFrame(frame, display: true)
+        state.showsSettings = true
     }
 
     func activateApp() {
@@ -127,22 +114,13 @@ final class WindowManager: NSObject, NSWindowDelegate {
     }
 
     private func makeWindow(title: String, content: AnyView, size: NSSize, resizable: Bool, autosaveName: String) -> NSWindow {
-        var style: NSWindow.StyleMask = [.titled, .closable, .miniaturizable]
-        if resizable {
-            style.insert(.resizable)
-        }
-        let window = NSWindow(contentRect: NSRect(origin: .zero, size: size), styleMask: style, backing: .buffered, defer: false)
-        window.title = title
-        window.isReleasedWhenClosed = false
+        let window = AppWindow.make(title: title, content: content, size: size, resizable: resizable)
         window.delegate = self
-        let hostingView = NSHostingView(rootView: content)
-        // Let the window be resized freely above the view's minimum size.
-        hostingView.sizingOptions = resizable ? [.minSize] : [.minSize, .maxSize]
-        window.contentView = hostingView
-        window.setContentSize(size)
         window.center()
-        window.setFrameAutosaveName(autosaveName)
-        window.setFrameUsingName(autosaveName)
+        if remembersFrames {
+            window.setFrameAutosaveName(autosaveName)
+            window.setFrameUsingName(autosaveName)
+        }
         return window
     }
 
@@ -163,5 +141,32 @@ final class WindowManager: NSObject, NSWindowDelegate {
                 self.editors[id] = nil
             }
         }
+    }
+}
+
+/// Builds the app's windows around their SwiftUI content. The toolbar and the panels the content
+/// declares are handed to the window itself, so every version of macOS draws them its own way:
+/// a line of buttons in the title bar before macOS 26, glass over the content since.
+@MainActor
+enum AppWindow {
+    static func make(title: String, content: AnyView, size: NSSize, resizable: Bool = true) -> NSWindow {
+        var style: NSWindow.StyleMask = [.titled, .closable, .miniaturizable]
+        if resizable {
+            style.insert(.resizable)
+        }
+        let hostingView = NSHostingView(rootView: content)
+        if #available(macOS 14.0, *) {
+            // The content reaches under the toolbar, as in the system's own apps.
+            style.insert(.fullSizeContentView)
+            hostingView.sceneBridgingOptions = [.toolbars]
+        }
+        let window = NSWindow(contentRect: NSRect(origin: .zero, size: size), styleMask: style, backing: .buffered, defer: false)
+        window.title = title
+        window.isReleasedWhenClosed = false
+        // Let the window be resized freely above the view's minimum size.
+        hostingView.sizingOptions = resizable ? [.minSize] : [.minSize, .maxSize]
+        window.contentView = hostingView
+        window.setContentSize(size)
+        return window
     }
 }

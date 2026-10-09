@@ -50,7 +50,7 @@ enum ScreenshotMode {
             state.selection = library.items[number - 1].id
         }
         let secondTab = values(of: "--settings-tab").last.flatMap(MainWindowState.SettingsTab.init(rawValue:)) ?? .general
-        let mainView = MainView(actions: LibraryActions(addFiles: {}, toggleSettings: {}))
+        let mainView = MainView(actions: LibraryActions(addFiles: {}))
             .environmentObject(library)
             .environmentObject(manager)
             .environmentObject(importer)
@@ -66,6 +66,11 @@ enum ScreenshotMode {
             if let seconds = values(of: "--watch-theme").last.flatMap(Int.init) {
                 state.showsSettings = true
                 await watchTheme(AnyView(mainView), seconds: seconds, in: directory)
+                NSApp.terminate(nil)
+                return
+            }
+            if CommandLine.arguments.contains("--toggle-settings") {
+                await toggleSettings(AnyView(mainView), state: state, in: directory)
                 NSApp.terminate(nil)
                 return
             }
@@ -89,11 +94,7 @@ enum ScreenshotMode {
     /// whether it follows the Mac's accent color and appearance when they change meanwhile.
     private static func watchTheme(_ content: AnyView, seconds: Int, in directory: URL) async {
         let size = NSSize(width: 1100, height: 520)
-        let window = NSWindow(contentRect: NSRect(origin: .zero, size: size), styleMask: [.titled, .closable],
-                              backing: .buffered, defer: false)
-        window.title = "WallAero Engine"
-        window.isReleasedWhenClosed = false
-        window.contentView = NSHostingView(rootView: content)
+        let window = AppWindow.make(title: "WallAero Engine", content: content, size: size)
         centerOnSharpestScreen(window)
         window.makeKeyAndOrderFront(nil)
         try? await Task.sleep(nanoseconds: 700_000_000)
@@ -109,6 +110,34 @@ enum ScreenshotMode {
             if let image {
                 write(image, to: directory.appendingPathComponent("theme-\(second).png"))
             }
+        }
+        window.close()
+    }
+
+    /// `--toggle-settings`, with `--screenshots`: opens the main window the way the app does,
+    /// narrow and without the settings, then shows them at its side and hides them again as the
+    /// button in the toolbar would. It takes a picture each time (`toggle-1.png`, …) and prints
+    /// how wide the window is and how narrow it may get.
+    private static func toggleSettings(_ content: AnyView, state: MainWindowState, in directory: URL) async {
+        state.showsSettings = false
+        let windows = WindowManager(state: state, remembersFrames: false, main: { content })
+        windows.showLibrary()
+        guard let window = windows.libraryWindow else { return }
+        try? await Task.sleep(nanoseconds: 800_000_000)
+        var frame = window.frame
+        frame.size.width = 700
+        window.setFrame(frame, display: true)
+        for (step, shown) in [false, true, false, true].enumerated() {
+            state.showsSettings = shown
+            try? await Task.sleep(nanoseconds: 1_200_000_000)
+            var image: CGImage?
+            if #available(macOS 14.4, *) {
+                image = try? await captureWithScreenCaptureKit(window)
+            }
+            if let image = image ?? drawViews(of: window) {
+                write(image, to: directory.appendingPathComponent("toggle-\(step + 1).png"))
+            }
+            print("settings \(shown ? "shown" : "hidden"): the window is \(Int(window.frame.width)) wide, at least \(Int(window.contentMinSize.width))")
         }
         window.close()
     }
@@ -131,15 +160,7 @@ enum ScreenshotMode {
 
     private static func shoot(_ content: AnyView, title: String, size: NSSize, to url: URL,
                               prepare: ((NSWindow) -> Void)? = nil) async {
-        let window = NSWindow(
-            contentRect: NSRect(origin: .zero, size: size),
-            styleMask: [.titled, .closable, .miniaturizable],
-            backing: .buffered,
-            defer: false
-        )
-        window.title = title
-        window.isReleasedWhenClosed = false
-        window.contentView = NSHostingView(rootView: content)
+        let window = AppWindow.make(title: title, content: content, size: size)
         centerOnSharpestScreen(window)
         window.makeKeyAndOrderFront(nil)
         // Let SwiftUI lay out, thumbnails load and the window server draw a few frames.
@@ -312,12 +333,7 @@ enum ScreenshotMode {
         }
         let preview = SceneEditorPreviewController(model: model)
         let size = NSSize(width: 1240, height: 760)
-        let window = NSWindow(contentRect: NSRect(origin: .zero, size: size), styleMask: [.titled, .closable, .resizable],
-                              backing: .buffered, defer: false)
-        window.title = model.title
-        window.isReleasedWhenClosed = false
-        window.contentView = NSHostingView(rootView: SceneEditorView(model: model, preview: preview))
-        window.setContentSize(size)
+        let window = AppWindow.make(title: model.title, content: AnyView(SceneEditorView(model: model, preview: preview)), size: size)
         centerOnSharpestScreen(window)
         window.makeKeyAndOrderFront(nil)
 

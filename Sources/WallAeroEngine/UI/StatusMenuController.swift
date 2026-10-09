@@ -74,7 +74,7 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
 
         let wallpapers = NSMenuItem(title: NSLocalizedString("Wallpaper", comment: "Menu item"), action: nil, keyEquivalent: "")
         wallpapers.submenu = wallpaperMenu()
-        setSymbol("photo.on.rectangle", on: wallpapers)
+        wallpapers.setSymbol("photo.on.rectangle")
         menu.addItem(wallpapers)
 
         menu.addItem(.separator())
@@ -140,18 +140,9 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
         let item = NSMenuItem(title: title, action: action, keyEquivalent: key)
         item.target = self
         if let symbol {
-            setSymbol(symbol, on: item)
+            item.setSymbol(symbol)
         }
         return item
-    }
-
-    /// macOS 26 puts a symbol next to some items by itself — a gear by "Settings…" — and indents the
-    /// rest of that group to line up with it, so the menu looked ragged. There every item gets its
-    /// own symbol, as in the system's menus; earlier systems draw menus without symbols.
-    private func setSymbol(_ name: String, on item: NSMenuItem) {
-        if #available(macOS 26, *) {
-            item.image = NSImage(systemSymbolName: name, accessibilityDescription: nil)
-        }
     }
 
     @objc private func togglePause() { manager.isPausedByUser.toggle() }

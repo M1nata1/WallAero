@@ -43,6 +43,8 @@ xattr -dr com.apple.quarantine "/Applications/WallAero Engine.app"
 
 You need Xcode 15 or later and macOS 13 Ventura or later. With only the Command Line Tools (Swift 5.9+), universal builds are not available — use `--native`.
 
+For the look of macOS 26, build with Xcode 26: macOS shows it only to apps built with its SDK. Older tools build the app too, and macOS 26 then draws it the way earlier systems do.
+
 The app is universal: macOS runs the version for its own processor, Apple silicon or Intel.
 
 ```bash
@@ -56,10 +58,12 @@ scripts/screenshots.sh        # retake the README screenshots in both languages 
 
 The app is signed ad hoc, so a copy built on your own Mac opens right away, without a warning.
 
+`swift run WallAeroEngine` and an editor's Run button start the program without the app around it. That is enough to try a change, but its settings are kept apart from the app's, and macOS takes it for a different program when it asks for permissions.
+
 ## Usage
 
 1. Launch WallAero Engine — the first time, it opens an empty library.
-2. Drag files or folders into the window, or click Add….
+2. Drag files or folders into the window, or click + in the toolbar.
 3. Double-click a wallpaper (or click Set as Wallpaper), and it is on your desktop.
 
 The settings are at the side of the same window; the gear button hides and shows them, and ⌘, opens the app's own. They have two tabs. Wallpaper is about the wallpaper selected in the library: its preview, the button that opens it in the editor, its scaling, position and speed, and the [variables](#scenes) of a scene. General holds the app's own settings. Everything else is in the menu bar icon. While its windows are closed, the app takes no space in the Dock.
@@ -92,7 +96,7 @@ A scene is a wallpaper made of a background and layers on top of it. Select a vi
 - **Lock screen.** With "Use the first frame as the macOS wallpaper" on, the lock screen shows a still picture of the scene, on which a clock would be stuck at one time. Every layer has a Show on Lock Screen switch: turn it off and the layer is left out of that picture.
 - **Saving.** Changes are saved by themselves and show on the desktop at once if the scene is the current wallpaper. ⌘Z undoes, ⇧⌘Z redoes.
 
-A scene is an ordinary web page. Show Folder opens its files:
+A scene is an ordinary web page. The folder button in the editor's toolbar opens its files:
 
 ```
 scene.json    the scene itself; the editor reads and writes only this

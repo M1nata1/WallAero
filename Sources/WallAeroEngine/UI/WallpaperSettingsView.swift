@@ -71,7 +71,7 @@ struct WallpaperSettingsView: View {
                         .scaledToFill()
                 }
             }
-            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: SystemLook.insetCornerRadius, style: .continuous))
         LabeledContent("Name") {
             Text(verbatim: item.name)
                 .lineLimit(1)
