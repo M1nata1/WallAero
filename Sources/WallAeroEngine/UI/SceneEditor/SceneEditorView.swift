@@ -8,8 +8,11 @@ struct SceneEditorView: View {
     let preview: SceneEditorPreviewController
 
     var body: some View {
+        // No least width is named here: the three parts have their own, and macOS 26 adds the
+        // room the toolbar's buttons need. A smaller number would let the window get narrower
+        // than its content, which then sticks out of it at both sides.
         layout
-            .frame(minWidth: 980, minHeight: 600)
+            .frame(minHeight: 600)
     }
 
     /// The three parts are the system's own sidebar, content and side panel where it has them

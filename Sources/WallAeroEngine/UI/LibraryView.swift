@@ -52,18 +52,33 @@ struct MainView: View {
     }
 }
 
-/// The button that shows the settings at the side of the window; it stays pressed while they
-/// are open.
+/// The button that shows the settings at the side of the window. Before macOS 26 it stays
+/// pressed while they are open; there a pressed toolbar button is filled with the accent
+/// color, the loudest thing in the window, so it is a plain button, as the system's own are.
 struct SettingsToggle: View {
     @Binding var isOn: Bool
 
     var body: some View {
-        Toggle(isOn: $isOn) {
-            Label("Settings", systemImage: "gearshape")
+        Group {
+            if SystemLook.isGlass {
+                Button {
+                    isOn.toggle()
+                } label: {
+                    label
+                }
+            } else {
+                Toggle(isOn: $isOn) {
+                    label
+                }
+                .toggleStyle(.button)
+            }
         }
-        .toggleStyle(.button)
         .labelStyle(.iconOnly)
         .help("Settings")
+    }
+
+    private var label: some View {
+        Label("Settings", systemImage: "gearshape")
     }
 }
 
